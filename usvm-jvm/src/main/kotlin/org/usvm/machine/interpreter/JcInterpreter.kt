@@ -110,6 +110,7 @@ class JcInterpreter(
     }
 
     fun getInitialState(method: JcMethod, targets: List<JcTarget> = emptyList()): JcState {
+//TODO: Тут можно инитить самую первую запись как-то (скорее всего пустой список записей)
         val state = JcState(ctx, method, targets = UTargetsSet.from(targets))
         val typedMethod = with(applicationGraph) { method.typed }
 
@@ -249,7 +250,6 @@ class JcInterpreter(
         when (stmt) {
             is JcMethodEntrypointInst -> {
                 observer?.onEntryPoint(simpleValueResolver, stmt, scope)
-
                 // Run static initializer for all enum arguments of the entrypoint
                 for ((type, ref) in stmt.entrypointArguments) {
                     exprResolver.ensureExprCorrectness(ref, type) ?: return
@@ -307,11 +307,14 @@ class JcInterpreter(
                 }
 
                 if (approximateMethod(scope, stmt)) {
-                    println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+
+                    scope.doWithState { this.lNStorage.addApproximatedInvNote(stmt.method.humanReadableSignature) }
+//                    println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
                     return
                 }
 
-                println("\u001B[31m" + "Calling ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+                scope.doWithState { this.lNStorage.addCallingNote(stmt.method.humanReadableSignature) }
+//                println("\u001B[31m" + "Calling ${stmt.method.humanReadableSignature}" + "\u001B[0m")
 
                 val entryPoint = applicationGraph.entryPoints(method).singleOrNull()
 
@@ -347,7 +350,9 @@ class JcInterpreter(
                 }
 
                 if (approximateMethod(scope, stmt)) {
-                    println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+
+                    scope.doWithState { this.lNStorage.addApproximatedInvNote(stmt.method.humanReadableSignature) }
+//                    println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
                     return
                 }
 
@@ -361,17 +366,20 @@ class JcInterpreter(
                     return
                 }
 
-                println("\u001B[31m" + "Calling virtual ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+                scope.doWithState { this.lNStorage.addCallingNote(stmt.method.humanReadableSignature) }
+//                println("\u001B[31m" + "Calling virtual ${stmt.method.humanReadableSignature}" + "\u001B[0m")
 
                 resolveVirtualInvoke(stmt, scope)
             }
 
             is JcDynamicMethodCallInst -> {
-                println("\u001B[31m" + "Calling dynamic ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+                scope.doWithState { this.lNStorage.addCallingNote(stmt.method.humanReadableSignature) }
+//                println("\u001B[31m" + "Calling dynamic ${stmt.method.humanReadableSignature}" + "\u001B[0m")
                 observer?.onMethodCallWithResolvedArguments(simpleValueResolver, stmt, scope)
 
                 if (approximateMethod(scope, stmt)) {
-                    println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+                    scope.doWithState { this.lNStorage.addApproximatedInvNote(stmt.method.humanReadableSignature) }
+//                    println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
                     return
                 }
 
@@ -568,6 +576,7 @@ class JcInterpreter(
 
         scope.doWithState {
             returnValue(valueToReturn)
+            scope.doWithState { this.lNStorage.addReturnNote() }
         }
     }
 

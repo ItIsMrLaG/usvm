@@ -27,6 +27,7 @@ class JcState(
     forkPoints: PathNode<PathNode<JcInst>> = PathNode.root(),
     var methodResult: JcMethodResult = JcMethodResult.NoCall,
     targets: UTargetsSet<JcTarget, JcInst> = UTargetsSet.empty(),
+    var lNStorage: LNStorage = ctx.flLogger.getNewLNoteStorage()
 ) : UState<JcType, JcMethod, JcInst, JcContext, JcTarget, JcState>(
     ctx,
     callStack,
@@ -37,6 +38,8 @@ class JcState(
     forkPoints,
     targets
 ) {
+
+
 
     override fun clone(newConstraints: UPathConstraints<JcType>?): JcState {
         val clonedConstraints = newConstraints ?: pathConstraints.clone()
@@ -51,6 +54,7 @@ class JcState(
             forkPoints,
             methodResult,
             targets.clone(),
+            ctx.flLogger.cloneLNStorage(lNStorage)
         )
     }
 
@@ -60,6 +64,7 @@ class JcState(
      * @return the merged state. TODO: Now it may reuse some of the internal components of the former states.
      */
     override fun mergeWith(other: JcState, by: Unit): JcState? {
+        // TODO: FrameLogger can be crashed
         require(entrypoint == other.entrypoint) { "Cannot merge states with different entrypoints" }
         // TODO: copy-paste
 
@@ -81,6 +86,7 @@ class JcState(
         val mergedTargets = targets.takeIf { it == other.targets } ?: return null
         mergedPathConstraints += ctx.mkOr(mergeGuard.thisConstraint, mergeGuard.otherConstraint)
 
+//      TODO: HTMLFrameLogger
         return JcState(
             ctx,
             entrypoint,

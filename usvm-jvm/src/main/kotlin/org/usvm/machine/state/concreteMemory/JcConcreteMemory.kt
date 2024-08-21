@@ -2888,10 +2888,16 @@ class JcConcreteMemory private constructor(
         assert(objParameters.size == parameters.size)
         try {
             if (!shouldInvoke(signature)) { // TODO: delete #CM
+
+                state.lNStorage.addConcreteInvNote(signature)
                 println(ansiYellow + "Can be added $signature" + ansiReset)
+
                 return false
             }
+
+            state.lNStorage.addCanBeConcreteInv(signature)
             println(ansiGreen + "Invoking $signature" + ansiReset)
+
             val future = executor.submit(Callable { method.invoke(JcConcreteMemoryClassLoader, thisObj, objParameters) })
             val resultObj: Any?
             try {

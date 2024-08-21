@@ -323,3 +323,7 @@ fun JavaExec.addEnvIfExists(envName: String, path: String) {
 
     environment(envName, file.absolutePath)
 }
+
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.8.0")
+}

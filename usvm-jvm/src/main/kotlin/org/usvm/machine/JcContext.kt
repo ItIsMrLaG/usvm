@@ -28,6 +28,7 @@ import org.usvm.USort
 import org.usvm.machine.interpreter.JcLambdaCallSiteRegionId
 import org.usvm.machine.interpreter.statics.JcStaticFieldReading
 import org.usvm.machine.interpreter.statics.JcStaticFieldRegionId
+import org.usvm.machine.state.HTMLFrameLogger
 import org.usvm.util.extractJcRefType
 
 internal typealias USizeSort = UBv32Sort
@@ -35,7 +36,9 @@ internal typealias USizeSort = UBv32Sort
 class JcContext(
     val cp: JcClasspath,
     components: JcComponents,
+    val flLogger: HTMLFrameLogger = HTMLFrameLogger(),
 ) : UContext<USizeSort>(components) {
+
     val voidSort by lazy { JcVoidSort(this) }
 
     val longSort get() = bv64Sort

@@ -14,6 +14,7 @@ import org.usvm.api.targets.JcTarget
 import org.usvm.forkblacklists.TargetsReachableForkBlackList
 import org.usvm.forkblacklists.UForkBlackList
 import org.usvm.machine.interpreter.JcInterpreter
+import org.usvm.machine.state.HTMLFrameLogger
 import org.usvm.machine.state.JcMethodResult
 import org.usvm.machine.state.JcState
 import org.usvm.machine.state.lastStmt
@@ -45,12 +46,13 @@ class JcMachine(
     private val options: UMachineOptions,
     private val jcMachineOptions: JcMachineOptions = JcMachineOptions(),
     private val interpreterObserver: JcInterpreterObserver? = null,
+    flLogger: HTMLFrameLogger = HTMLFrameLogger(),
 ) : UMachine<JcState>() {
     private val applicationGraph = JcApplicationGraph(cp)
 
     private val typeSystem = JcTypeSystem(cp, options.typeOperationsTimeout)
     private val components = JcComponents(typeSystem, options)
-    private val ctx = JcContext(cp, components)
+    private val ctx = JcContext(cp, components, flLogger)
 
     private val interpreter = JcInterpreter(ctx, applicationGraph, jcMachineOptions, interpreterObserver)
 

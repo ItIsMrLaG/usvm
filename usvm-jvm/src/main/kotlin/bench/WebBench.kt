@@ -31,6 +31,7 @@ import org.usvm.api.util.JcTestInterpreter
 import org.usvm.logger
 import org.usvm.machine.JcMachine
 import org.usvm.machine.JcMachineOptions
+import org.usvm.machine.state.HTMLFrameLogger
 import org.usvm.util.classpathWithApproximations
 import java.io.File
 import java.io.PrintStream
@@ -48,7 +49,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.nanoseconds
 
 private fun loadWebPetClinicBench(): BenchCp {
-    val petClinicDir = Path("/Users/michael/Documents/Work/spring-petclinic/build/libs/BOOT-INF")
+    val petClinicDir = Path("/home/gora/PROG_SPBU/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF")
     return loadWebAppBenchCp(petClinicDir / "classes", petClinicDir / "lib").apply {
         entrypointFilter = { it.enclosingClass.simpleName.startsWith("PetClinicApplication") }
     }
@@ -219,12 +220,14 @@ private fun analyzeBench(benchmark: BenchCp) {
     val startClass = publicClasses.find { it.simpleName == "NewStartSpring" }!!.toType()
     val method = startClass.declaredMethods.find { it.name == "startSpring" }!!
     // using file instead of console
-    val fileStream = PrintStream("/Users/michael/Documents/Work/usvm/springLog.txt")
+    val fileStream = PrintStream("/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/usvm/springLog.txt")
     System.setOut(fileStream)
-    JcMachine(cp, options, jcMachineOptions).use { machine ->
+    val flLogger = HTMLFrameLogger()
+    JcMachine(cp, options, jcMachineOptions, flLogger=flLogger).use { machine ->
         val states = machine.analyze(method.method)
         states.map { testResolver.resolve(method, it) }
     }
+    flLogger.generateConclusion("/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/usvm/prettySpringLog.html")
 }
 
 private fun JcClasspath.publicClasses(locations: List<JcByteCodeLocation>): Sequence<JcClassOrInterface> =
