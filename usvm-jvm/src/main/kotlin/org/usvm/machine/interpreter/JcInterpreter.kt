@@ -69,18 +69,7 @@ import org.usvm.machine.JcMethodEntrypointInst
 import org.usvm.machine.JcReflectionInvokeResult
 import org.usvm.machine.JcVirtualMethodCallInst
 import org.usvm.machine.mocks.mockMethod
-import org.usvm.machine.state.JcMethodResult
-import org.usvm.machine.state.JcState
-import org.usvm.machine.state.addNewMethodCall
-import org.usvm.machine.state.lastStmt
-import org.usvm.machine.state.localIdx
-import org.usvm.machine.state.localsCount
-import org.usvm.machine.state.newStmt
-import org.usvm.machine.state.parametersWithThisCount
-import org.usvm.machine.state.returnValue
-import org.usvm.machine.state.skipMethodInvocationWithValue
-import org.usvm.machine.state.throwExceptionAndDropStackFrame
-import org.usvm.machine.state.throwExceptionWithoutStackFrameDrop
+import org.usvm.machine.state.*
 import org.usvm.memory.ULValue
 import org.usvm.memory.URegisterStackLValue
 import org.usvm.solver.USatResult
@@ -293,7 +282,14 @@ class JcInterpreter(
                             val boxMethod = boxedType.declaredMethods.find {
                                 it.name == "valueOf" && it.isStatic && it.parameters.singleOrNull() == returnType
                             }!!
-                            newStmt(JcConcreteMethodCallInst(stmt.location, boxMethod.method, listOf(result), stmt.returnSite))
+                            newStmt(
+                                JcConcreteMethodCallInst(
+                                    stmt.location,
+                                    boxMethod.method,
+                                    listOf(result),
+                                    stmt.returnSite
+                                )
+                            )
                         }
 
                         else -> skipMethodInvocationWithValue(stmt, result)
@@ -310,10 +306,29 @@ class JcInterpreter(
 
                 if (approximateMethod(scope, stmt)) {
                     println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+                    if (scope.getCond()) {
+                        scope.calcOnState {
+                            logEntityId = ctx.fLogger.log(
+                                EntityType.Inf,
+                                logEntityId,
+                                "Approximated ${stmt.method.humanReadableSignature}"
+                            )
+                        }
+                    }
                     return
                 }
 
                 println("\u001B[31m" + "Calling ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+                if (scope.getCond()) {
+                    scope.calcOnState {
+                        logEntityId = ctx.fLogger.log(
+                            EntityType.MInv,
+                            logEntityId,
+                            "Calling ${stmt.method.humanReadableSignature}",
+                            InvokeType.Symbolic
+                        )
+                    }
+                }
 
                 val entryPoint = applicationGraph.entryPoints(method).singleOrNull()
 
@@ -360,6 +375,15 @@ class JcInterpreter(
 
                 if (approximateMethod(scope, stmt)) {
                     println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+                    if (scope.getCond()) {
+                        scope.calcOnState {
+                            logEntityId = ctx.fLogger.log(
+                                EntityType.Inf,
+                                logEntityId,
+                                "Approximated ${stmt.method.humanReadableSignature}"
+                            )
+                        }
+                    }
                     return
                 }
 
@@ -374,18 +398,49 @@ class JcInterpreter(
                 }
 
                 println("\u001B[31m" + "Calling virtual ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+                if (scope.getCond()) {
+                    scope.calcOnState {
+                        logEntityId = ctx.fLogger.log(
+                            EntityType.MInv,
+                            logEntityId,
+                            "Calling virtual ${stmt.method.humanReadableSignature}",
+                            InvokeType.Symbolic
+                        )
+                    }
+                }
 
                 resolveVirtualInvoke(stmt, scope)
             }
 
             is JcDynamicMethodCallInst -> {
                 println("\u001B[31m" + "Calling dynamic ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+                if (scope.getCond()) {
+                    scope.calcOnState {
+                        logEntityId = ctx.fLogger.log(
+                            EntityType.MInv,
+                            logEntityId,
+                            "Calling dynamic ${stmt.method.humanReadableSignature}",
+                            InvokeType.Symbolic
+                        )
+                    }
+                }
                 observer?.onMethodCallWithResolvedArguments(simpleValueResolver, stmt, scope)
 
                 if (approximateMethod(scope, stmt)) {
                     println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
+
+                    if (scope.getCond()) {
+                        scope.calcOnState {
+                            logEntityId = ctx.fLogger.log(
+                                EntityType.Inf,
+                                logEntityId,
+                                "Approximated ${stmt.method.humanReadableSignature}"
+                            )
+                        }
+                    }
                     return
                 }
+
 
                 mockMethod(scope, stmt, stmt.dynamicCall.callSiteReturnType)
             }
@@ -521,7 +576,7 @@ class JcInterpreter(
 
             val arrayTypeConstraints = mapTypeStream(rvalueRef) { _, types ->
                 val elementType = types.singleOrNull()
-                    // When we can't verify a type, treat this check as no exception possible
+                // When we can't verify a type, treat this check as no exception possible
                     ?: return@mapTypeStream ctx.trueExpr
 
                 val arrayType = ctx.cp.arrayTypeOf(elementType)

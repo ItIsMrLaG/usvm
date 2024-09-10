@@ -30,6 +30,8 @@ class StepScope<T : UState<Type, *, Statement, Context, *, T>, Type, Statement, 
     private inline val canProcessFurtherOnCurrentStep: Boolean get() = stepScopeState == CAN_BE_PROCESSED
     private inline val ctx: Context get() = originalState.ctx
 
+    fun getCond() = canProcessFurtherOnCurrentStep
+
     /**
      * Determines whether we interact this scope on the current step.
      * @see [StepScopeState].

@@ -99,6 +99,7 @@ import org.usvm.api.util.JcConcreteMemoryClassLoader
 import org.usvm.api.util.Reflection.toJavaClass
 import org.usvm.api.writeField
 import org.usvm.getIntValue
+import org.usvm.machine.state.EntityType
 import org.usvm.machine.state.newStmt
 import org.usvm.mkSizeAddExpr
 import org.usvm.mkSizeExpr
@@ -535,7 +536,7 @@ class JcMethodApproximationResolver(
                 .mapNotNull { ctx.cp.findClassOrNull(it) }
                 .filterNot { it is JcUnknownClass }
                 // TODO: filter deps classes #Spring use JcMachineOptions.projectLocations
-                .filter { it.declaration.location.path.equals("/Users/michael/Documents/Work/spring-petclinic/build/libs/BOOT-INF/classes") }
+                .filter { it.declaration.location.path.equals("/home/gora/PROG_SPBU/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF/classes") }
                 .filter {
                     !it.isAbstract && !it.isInterface && !it.isAnonymous && it.annotations.any {
                         it.name.equals(
@@ -647,6 +648,7 @@ class JcMethodApproximationResolver(
                 val messageExpr = methodCall.arguments[1].asExpr(ctx.addressSort) as UConcreteHeapRef
                 val message = memory.tryHeapRefToObject(messageExpr) as String
                 println("\u001B[36m" + message + "\u001B[0m")
+                logEntityId = ctx.fLogger.log(EntityType.Inf, logEntityId, message)
                 skipMethodInvocationWithValue(methodCall, ctx.voidValue)
             }
 

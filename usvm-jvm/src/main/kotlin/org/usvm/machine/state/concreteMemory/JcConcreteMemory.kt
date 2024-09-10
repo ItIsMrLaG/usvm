@@ -104,9 +104,7 @@ import org.usvm.machine.interpreter.statics.JcStaticFieldLValue
 import org.usvm.machine.interpreter.statics.JcStaticFieldRegionId
 import org.usvm.machine.interpreter.statics.JcStaticFieldsMemoryRegion
 import org.usvm.machine.interpreter.statics.staticFieldsInitializedFlagField
-import org.usvm.machine.state.JcState
-import org.usvm.machine.state.newStmt
-import org.usvm.machine.state.throwExceptionWithoutStackFrameDrop
+import org.usvm.machine.state.*
 import org.usvm.memory.UMemory
 import org.usvm.memory.UMemoryRegion
 import org.usvm.memory.UMemoryRegionId
@@ -482,6 +480,7 @@ private class JcConcreteMemoryBindings(
                                     setChild(phys!!, child, ArrayIndexChildKind(i))
                                 }
                             }
+
                             else -> error("reTrack: unexpected array $current")
                         }
                     }
@@ -1088,7 +1087,8 @@ private class JcConcreteFieldRegion<Sort : USort>(
     private val jcField by lazy { regionId.field }
     private val javaField by lazy { jcField.toJavaField }
     private val isApproximation by lazy { javaField == null }
-//    private val isPrimitiveApproximation by lazy { isApproximation && jcField.name == "value" }
+
+    //    private val isPrimitiveApproximation by lazy { isApproximation && jcField.name == "value" }
     private val sort by lazy { regionId.sort }
     private val typedField: JcTypedField by lazy { jcField.typedField }
     private val fieldType: JcType by lazy { typedField.type }
@@ -1818,7 +1818,12 @@ private class JcConcreteRefSetRegion(
             val keyObj = marshall.tryExprToObj(key.setElement, objType)
             val valueObj = marshall.tryExprToObj(value, ctx.cp.boolean)
             val isConcreteWrite = valueObj.hasValue && keyObj.hasValue && guard.isTrue
-            if (isConcreteWrite && bindings.changeSetContainsElement(address, keyObj.value, valueObj.value as Boolean)) {
+            if (isConcreteWrite && bindings.changeSetContainsElement(
+                    address,
+                    keyObj.value,
+                    valueObj.value as Boolean
+                )
+            ) {
                 mutatedRefSets.add(ref.address)
                 return this
             }
@@ -2143,7 +2148,8 @@ private class Marshall(
             if (typeName.contains('/') && typeName.contains("\$\$Lambda\$")) {
                 val db = ctx.cp.db
                 val vfs = db.javaClass.allInstanceFields.find { it.name == "classesVfs" }!!.getFieldValue(db)!!
-                val loc = ctx.cp.registeredLocations.find { it.jcLocation?.jarOrFolder?.absolutePath?.startsWith("/Users/michael/Documents/Work/spring-petclinic/build/libs/BOOT-INF/classes") == true }!!
+                val loc =
+                    ctx.cp.registeredLocations.find { it.jcLocation?.jarOrFolder?.absolutePath?.startsWith("/home/gora/PROG_SPBU/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF/classes") == true }!!
                 val addMethod = vfs.javaClass.methods.find { it.name == "addClass" }!!
                 val source = LazyClassSourceImpl(loc, typeName)
                 addMethod.invoke(vfs, source)
@@ -2153,7 +2159,7 @@ private class Marshall(
             }
 
             return ctx.cp.findType(typeName)
-        } catch (e : Throwable) {
+        } catch (e: Throwable) {
             return null
         }
     }
@@ -2374,6 +2380,8 @@ private class Marshall(
 
     fun encode(address: UConcreteHeapAddress) {
         println("encoding for $address")
+        ctx.fLogger.log(InternalMark.Report, "encoding for $address")
+
         val obj = bindings.virtToPhys(address)
         val type = bindings.typeOf(address) as JcClassType
         var encoder: Any? = null
@@ -2770,7 +2778,7 @@ class JcConcreteMemory private constructor(
         return null
     }
 
-    override fun <Sort: USort> tryExprToInt(expr: UExpr<Sort>): Int? {
+    override fun <Sort : USort> tryExprToInt(expr: UExpr<Sort>): Int? {
         val maybe = marshall.tryExprToFullyConcreteObj(expr, ctx.cp.int)
         assert(!(maybe.hasValue && maybe.value == null))
         if (maybe.hasValue)
@@ -2786,6 +2794,8 @@ class JcConcreteMemory private constructor(
     override fun clone(typeConstraints: UTypeConstraints<JcType>): UMemory<JcType, JcMethod> {
         bindings.makeNonWritable()
         println(ansiBlue + "Concrete memory is non writable!" + ansiReset)
+        ctx.fLogger.log(InternalMark.Report, "Concrete memory is non writable!")
+
         val stack = stack.clone()
         val mocks = mocks.clone()
         val regions = regions.build()
@@ -2819,8 +2829,8 @@ class JcConcreteMemory private constructor(
                         method.enclosingClass.isEnum && method.isConstructor ||
                         method.humanReadableSignature.let {
                             it.startsWith("org.usvm.api.Engine.") ||
-                            it.startsWith("runtime.LibSLRuntime.") ||
-                            it.startsWith("generated.")
+                                    it.startsWith("runtime.LibSLRuntime.") ||
+                                    it.startsWith("generated.")
                             it.startsWith("stub.")
                         }
                 )
@@ -2831,9 +2841,9 @@ class JcConcreteMemory private constructor(
         return !forbiddenInvocations.contains(signature) &&
                 (
                         concreteNonMutatingInvocations.contains(signature) ||
-                        bindings.isWritable && concreteMutatingInvocations.contains(signature) ||
-                        method.isConstructor && method.enclosingClass.toType().isAssignable(throwableType)
-                )
+                                bindings.isWritable && concreteMutatingInvocations.contains(signature) ||
+                                method.isConstructor && method.enclosingClass.toType().isAssignable(throwableType)
+                        )
     }
 
     private fun applyChanges(oldObj: Any, newObj: Any) {
@@ -2894,12 +2904,28 @@ class JcConcreteMemory private constructor(
         assert(objParameters.size == parameters.size)
         try {
             if (!shouldInvoke(method)) { // TODO: delete #CM
-                if (!forbiddenInvocations.contains(signature))
+                if (!forbiddenInvocations.contains(signature)) {
                     println(ansiYellow + "Can be added $signature" + ansiReset)
+
+                    state.logEntityId = state.ctx.fLogger.log(
+                        EntityType.MInv,
+                        state.logEntityId,
+                        "Can be added $signature",
+                        InvokeType.SymbButCanBeConc
+                    )
+                }
+
                 return false
             }
             println(ansiGreen + "Invoking $signature" + ansiReset)
-            val future = executor.submit(Callable { method.invoke(JcConcreteMemoryClassLoader, thisObj, objParameters) })
+            state.logEntityId = state.ctx.fLogger.log(
+                EntityType.MInv,
+                state.logEntityId,
+                "Invoking $signature",
+                InvokeType.Concrete
+            )
+            val future =
+                executor.submit(Callable { method.invoke(JcConcreteMemoryClassLoader, thisObj, objParameters) })
             val resultObj: Any?
             try {
                 try {
@@ -2915,6 +2941,12 @@ class JcConcreteMemory private constructor(
             }
 
             println("Result $resultObj")
+            state.logEntityId = state.ctx.fLogger.log(
+                EntityType.Inf,
+                state.logEntityId,
+                "Result $resultObj",
+            )
+
             if (method.isConstructor)
                 applyChanges(thisObj!!, resultObj!!)
             val returnType = ctx.cp.findTypeOrNull(method.returnType)!!
@@ -2924,7 +2956,14 @@ class JcConcreteMemory private constructor(
             return true
         } catch (e: Throwable) {
             val jcType = ctx.jcTypeOf(e)
+
             println("Exception ${e.javaClass} with message ${e.message}")
+            state.logEntityId = state.ctx.fLogger.log(
+                EntityType.Inf,
+                state.logEntityId,
+                "Exception ${e.javaClass} with message ${e.message}",
+            )
+
             val exception = allocateObject(e, jcType)
             state.throwExceptionWithoutStackFrameDrop(exception, jcType)
             return true

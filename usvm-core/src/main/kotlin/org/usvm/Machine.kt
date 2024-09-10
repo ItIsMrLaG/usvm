@@ -44,15 +44,15 @@ abstract class UMachine<State : UState<*, *, *, *, *, *>> : AutoCloseable {
                     val (forkedStates, stateAlive) = interpreter.step(state)
                     observer.onState(state, forkedStates)
 
-                    if (state.pathConstraints.isFalse && state.models.isNotEmpty()){
-                        let {  }
+                    if (state.pathConstraints.isFalse && state.models.isNotEmpty()) {
+                        let { }
                     }
 
                     val originalStateAlive = stateAlive && !isStateTerminated(state)
                     val aliveForkedStates = mutableListOf<State>()
                     for (forkedState in forkedStates) {
-                        if (forkedState.pathConstraints.isFalse && forkedState.models.isNotEmpty()){
-                            let {  }
+                        if (forkedState.pathConstraints.isFalse && forkedState.models.isNotEmpty()) {
+                            let { }
                         }
 
                         if (!isStateTerminated(forkedState)) {
@@ -86,10 +86,11 @@ abstract class UMachine<State : UState<*, *, *, *, *, *>> : AutoCloseable {
             if (!pathSelector.isEmpty()) {
                 val stopReason = stopStrategy.stopReason()
                 logger.debug { stopReason }
+
                 println("[USVM] Stopped: $stopReason")
             }
         }
     }
 
-    override fun toString(): String = this::class.simpleName?:"<empty>"
+    override fun toString(): String = this::class.simpleName ?: "<empty>"
 }

@@ -5,7 +5,6 @@ import org.jacodb.api.jvm.JcType
 import org.jacodb.api.jvm.cfg.JcInst
 import org.usvm.PathNode
 import org.usvm.UCallStack
-import org.usvm.UConcreteHeapRef
 import org.usvm.UState
 import org.usvm.api.targets.JcTarget
 import org.usvm.constraints.UPathConstraints
@@ -27,6 +26,7 @@ class JcState(
     forkPoints: PathNode<PathNode<JcInst>> = PathNode.root(),
     var methodResult: JcMethodResult = JcMethodResult.NoCall,
     targets: UTargetsSet<JcTarget, JcInst> = UTargetsSet.empty(),
+    var logEntityId: LogEntityId = INIT_STATE_LOG_ENTITY_ID,
 ) : UState<JcType, JcMethod, JcInst, JcContext, JcTarget, JcState>(
     ctx,
     callStack,
@@ -51,6 +51,7 @@ class JcState(
             forkPoints,
             methodResult,
             targets.clone(),
+            ctx.fLogger.log(InternalMark.StateFork, logEntityId)
         )
     }
 

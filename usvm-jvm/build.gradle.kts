@@ -59,6 +59,8 @@ dependencies {
 
     approximations(approximationsRepo, "approximations", approximationsVersion)
     testImplementation(approximationsRepo, "tests", approximationsVersion)
+
+    implementation("org.jetbrains.kotlinx:atomicfu:0.23.2")
 }
 
 val springApproximationsDeps by configurations.creating
@@ -247,8 +249,9 @@ tasks.register<JavaExec>("runWebBench") {
 
     jvmArgs = listOf("-Xmx15g") + mutableListOf<String>().apply {
         add("-Djava.security.manager -Djava.security.policy=webExplorationPolicy.policy")
-        add("-Djdk.internal.lambda.dumpProxyClasses=/Users/michael/Documents/Work/spring-petclinic/build/libs/BOOT-INF/classes/")
+        add("-Djdk.internal.lambda.dumpProxyClasses=/home/gora/PROG_SPBU/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF/classes/")
         openPackage("java.base", "jdk.internal.misc")
+        openPackage("java.base", "sun.reflect.generics.parser")
         openPackage("java.base", "java.lang")
         openPackage("java.base", "java.lang.reflect")
         openPackage("java.base", "sun.security.provider")
