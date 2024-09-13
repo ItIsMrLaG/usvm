@@ -12,6 +12,7 @@ import org.jacodb.api.jvm.cfg.JcRawClassConstant
 import org.jacodb.api.jvm.ext.findClass
 import org.jacodb.api.jvm.ext.toType
 import org.jacodb.approximation.Approximations
+import org.jacodb.impl.JcRamErsSettings
 import org.jacodb.impl.cfg.MethodNodeBuilder
 import org.jacodb.impl.features.InMemoryHierarchy
 import org.jacodb.impl.features.Usages
@@ -48,7 +49,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.nanoseconds
 
 private fun loadWebPetClinicBench(): BenchCp {
-    val petClinicDir = Path("/home/gora/PROG_SPBU/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF")
+    val petClinicDir = Path("/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF")
     return loadWebAppBenchCp(petClinicDir / "classes", petClinicDir / "lib").apply {
         entrypointFilter = { it.enclosingClass.simpleName.startsWith("PetClinicApplication") }
     }
@@ -111,6 +112,8 @@ private fun loadBenchCp(classes: List<File>, dependencies: List<File>): BenchCp 
 
     val db = jacodb {
         useProcessJavaRuntime()
+
+        persistenceImpl(JcRamErsSettings)
 
         installFeatures(InMemoryHierarchy)
         installFeatures(Usages)

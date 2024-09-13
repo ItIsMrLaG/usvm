@@ -59,7 +59,10 @@ dependencies {
 
     approximations(approximationsRepo, "approximations", approximationsVersion)
     testImplementation(approximationsRepo, "tests", approximationsVersion)
+}
 
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-html-jvm:0.8.0")
     implementation("org.jetbrains.kotlinx:atomicfu:0.23.2")
 }
 
@@ -247,7 +250,7 @@ tasks.register<JavaExec>("runWebBench") {
     environment("usvm.jvm.api.jar.path", usvmApiJarPath.absolutePath)
     environment("usvm.jvm.approximations.jar.path", usvmApproximationJarPath.absolutePath)
 
-    jvmArgs = listOf("-Xmx15g") + mutableListOf<String>().apply {
+    jvmArgs = listOf("-Xmx4g") + mutableListOf<String>().apply {
         add("-Djava.security.manager -Djava.security.policy=webExplorationPolicy.policy")
         add("-Djdk.internal.lambda.dumpProxyClasses=/home/gora/PROG_SPBU/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF/classes/")
         openPackage("java.base", "jdk.internal.misc")

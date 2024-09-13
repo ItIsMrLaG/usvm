@@ -26,7 +26,7 @@ class JcState(
     forkPoints: PathNode<PathNode<JcInst>> = PathNode.root(),
     var methodResult: JcMethodResult = JcMethodResult.NoCall,
     targets: UTargetsSet<JcTarget, JcInst> = UTargetsSet.empty(),
-    var logEntityId: LogEntityId = INIT_STATE_LOG_ENTITY_ID,
+    logEntityParentPrefix: String? = null,
 ) : UState<JcType, JcMethod, JcInst, JcContext, JcTarget, JcState>(
     ctx,
     callStack,
@@ -37,6 +37,7 @@ class JcState(
     forkPoints,
     targets
 ) {
+    val logStateUniqName: String = ctx.fLogger.addNewState(logEntityParentPrefix)
 
     override fun clone(newConstraints: UPathConstraints<JcType>?): JcState {
         val clonedConstraints = newConstraints ?: pathConstraints.clone()
@@ -51,7 +52,7 @@ class JcState(
             forkPoints,
             methodResult,
             targets.clone(),
-            ctx.fLogger.log(InternalMark.StateFork, logEntityId)
+            logStateUniqName
         )
     }
 

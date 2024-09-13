@@ -78,7 +78,6 @@ import org.usvm.collection.array.length.UArrayLengthLValue
 import org.usvm.collection.field.UFieldLValue
 import org.usvm.machine.interpreter.JcExprResolver
 import org.usvm.machine.interpreter.JcStepScope
-import org.usvm.machine.mocks.mockMethod
 import org.usvm.machine.state.JcState
 import org.usvm.machine.state.skipMethodInvocationWithValue
 import org.usvm.sizeSort
@@ -99,7 +98,6 @@ import org.usvm.api.util.JcConcreteMemoryClassLoader
 import org.usvm.api.util.Reflection.toJavaClass
 import org.usvm.api.writeField
 import org.usvm.getIntValue
-import org.usvm.machine.state.EntityType
 import org.usvm.machine.state.newStmt
 import org.usvm.mkSizeAddExpr
 import org.usvm.mkSizeExpr
@@ -648,7 +646,7 @@ class JcMethodApproximationResolver(
                 val messageExpr = methodCall.arguments[1].asExpr(ctx.addressSort) as UConcreteHeapRef
                 val message = memory.tryHeapRefToObject(messageExpr) as String
                 println("\u001B[36m" + message + "\u001B[0m")
-                logEntityId = ctx.fLogger.log(EntityType.Inf, logEntityId, message)
+                ctx.fLogger.logInfo(logStateUniqName, message)
                 skipMethodInvocationWithValue(methodCall, ctx.voidValue)
             }
 

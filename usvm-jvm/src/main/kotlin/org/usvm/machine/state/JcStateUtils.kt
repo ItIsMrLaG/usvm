@@ -41,7 +41,7 @@ fun JcState.throwExceptionWithoutStackFrameDrop(address: UHeapRef, type: JcType)
     if (type.typeName == "java.lang.InternalError" || type.typeName == "java.lang.IllegalStateException")
         println()
     println("exception thrown ${type.typeName}")
-    logEntityId = ctx.fLogger.log(EntityType.ExStart, logEntityId, "exception thrown ${type.typeName}")
+    ctx.fLogger.logExnThrow(logStateUniqName, "exception thrown ${type.typeName}")
     methodResult = JcMethodResult.JcException(address, type, callStack.stackTrace(lastStmt))
 }
 

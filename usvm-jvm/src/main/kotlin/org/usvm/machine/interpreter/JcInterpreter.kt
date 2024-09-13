@@ -308,11 +308,7 @@ class JcInterpreter(
                     println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
                     if (scope.getCond()) {
                         scope.calcOnState {
-                            logEntityId = ctx.fLogger.log(
-                                EntityType.Inf,
-                                logEntityId,
-                                "Approximated ${stmt.method.humanReadableSignature}"
-                            )
+                            ctx.fLogger.logInfo(logStateUniqName, "Approximated ${stmt.method.humanReadableSignature}")
                         }
                     }
                     return
@@ -321,9 +317,8 @@ class JcInterpreter(
                 println("\u001B[31m" + "Calling ${stmt.method.humanReadableSignature}" + "\u001B[0m")
                 if (scope.getCond()) {
                     scope.calcOnState {
-                        logEntityId = ctx.fLogger.log(
-                            EntityType.MInv,
-                            logEntityId,
+                        ctx.fLogger.logMethodInvoke(
+                            logStateUniqName,
                             "Calling ${stmt.method.humanReadableSignature}",
                             InvokeType.Symbolic
                         )
@@ -377,11 +372,7 @@ class JcInterpreter(
                     println("\u001B[31m" + "Approximated ${stmt.method.humanReadableSignature}" + "\u001B[0m")
                     if (scope.getCond()) {
                         scope.calcOnState {
-                            logEntityId = ctx.fLogger.log(
-                                EntityType.Inf,
-                                logEntityId,
-                                "Approximated ${stmt.method.humanReadableSignature}"
-                            )
+                            ctx.fLogger.logInfo(logStateUniqName, "Approximated ${stmt.method.humanReadableSignature}")
                         }
                     }
                     return
@@ -400,10 +391,9 @@ class JcInterpreter(
                 println("\u001B[31m" + "Calling virtual ${stmt.method.humanReadableSignature}" + "\u001B[0m")
                 if (scope.getCond()) {
                     scope.calcOnState {
-                        logEntityId = ctx.fLogger.log(
-                            EntityType.MInv,
-                            logEntityId,
-                            "Calling virtual ${stmt.method.humanReadableSignature}",
+                        ctx.fLogger.logMethodInvoke(
+                            logStateUniqName,
+                            "Calling ${stmt.method.humanReadableSignature}",
                             InvokeType.Symbolic
                         )
                     }
@@ -416,10 +406,9 @@ class JcInterpreter(
                 println("\u001B[31m" + "Calling dynamic ${stmt.method.humanReadableSignature}" + "\u001B[0m")
                 if (scope.getCond()) {
                     scope.calcOnState {
-                        logEntityId = ctx.fLogger.log(
-                            EntityType.MInv,
-                            logEntityId,
-                            "Calling dynamic ${stmt.method.humanReadableSignature}",
+                        ctx.fLogger.logMethodInvoke(
+                            logStateUniqName,
+                            "Calling ${stmt.method.humanReadableSignature}",
                             InvokeType.Symbolic
                         )
                     }
@@ -431,11 +420,7 @@ class JcInterpreter(
 
                     if (scope.getCond()) {
                         scope.calcOnState {
-                            logEntityId = ctx.fLogger.log(
-                                EntityType.Inf,
-                                logEntityId,
-                                "Approximated ${stmt.method.humanReadableSignature}"
-                            )
+                            ctx.fLogger.logInfo(logStateUniqName, "Approximated ${stmt.method.humanReadableSignature}")
                         }
                     }
                     return

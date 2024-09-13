@@ -2380,10 +2380,12 @@ private class Marshall(
 
     fun encode(address: UConcreteHeapAddress) {
         println("encoding for $address")
-        ctx.fLogger.log(InternalMark.Report, "encoding for $address")
+        ctx.fLogger.logInfo(stateName = null, "Attempt to encode for address $address")
 
         val obj = bindings.virtToPhys(address)
         val type = bindings.typeOf(address) as JcClassType
+        ctx.fLogger.logInfo(stateName = null, "encoding for $address: ($obj of $type)")
+
         var encoder: Any? = null
         var jcClass: JcClassOrInterface? = type.jcClass
         var searchingEncoder = true
@@ -2794,7 +2796,7 @@ class JcConcreteMemory private constructor(
     override fun clone(typeConstraints: UTypeConstraints<JcType>): UMemory<JcType, JcMethod> {
         bindings.makeNonWritable()
         println(ansiBlue + "Concrete memory is non writable!" + ansiReset)
-        ctx.fLogger.log(InternalMark.Report, "Concrete memory is non writable!")
+        ctx.fLogger.logInfo(stateName = null, "Concrete memory is non writable!")
 
         val stack = stack.clone()
         val mocks = mocks.clone()
@@ -2906,24 +2908,22 @@ class JcConcreteMemory private constructor(
             if (!shouldInvoke(method)) { // TODO: delete #CM
                 if (!forbiddenInvocations.contains(signature)) {
                     println(ansiYellow + "Can be added $signature" + ansiReset)
-
-                    state.logEntityId = state.ctx.fLogger.log(
-                        EntityType.MInv,
-                        state.logEntityId,
+                    ctx.fLogger.logInfo(
+                        stateName = state.logStateUniqName,
                         "Can be added $signature",
-                        InvokeType.SymbButCanBeConc
+                        InvokeType.SymbButCanBeConc.getColor()
                     )
                 }
 
                 return false
             }
             println(ansiGreen + "Invoking $signature" + ansiReset)
-            state.logEntityId = state.ctx.fLogger.log(
-                EntityType.MInv,
-                state.logEntityId,
+            ctx.fLogger.logMethodInvoke(
+                state.logStateUniqName,
                 "Invoking $signature",
                 InvokeType.Concrete
             )
+
             val future =
                 executor.submit(Callable { method.invoke(JcConcreteMemoryClassLoader, thisObj, objParameters) })
             val resultObj: Any?
@@ -2941,11 +2941,7 @@ class JcConcreteMemory private constructor(
             }
 
             println("Result $resultObj")
-            state.logEntityId = state.ctx.fLogger.log(
-                EntityType.Inf,
-                state.logEntityId,
-                "Result $resultObj",
-            )
+            ctx.fLogger.logInfo(state.logStateUniqName, "Result $resultObj")
 
             if (method.isConstructor)
                 applyChanges(thisObj!!, resultObj!!)
@@ -2958,11 +2954,7 @@ class JcConcreteMemory private constructor(
             val jcType = ctx.jcTypeOf(e)
 
             println("Exception ${e.javaClass} with message ${e.message}")
-            state.logEntityId = state.ctx.fLogger.log(
-                EntityType.Inf,
-                state.logEntityId,
-                "Exception ${e.javaClass} with message ${e.message}",
-            )
+            ctx.fLogger.logInfo(stateName = state.logStateUniqName, "Exception ${e.javaClass} with message ${e.message}")
 
             val exception = allocateObject(e, jcType)
             state.throwExceptionWithoutStackFrameDrop(exception, jcType)

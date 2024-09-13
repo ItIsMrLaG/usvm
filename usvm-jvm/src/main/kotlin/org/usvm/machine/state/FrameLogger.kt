@@ -1,19 +1,13 @@
 package org.usvm.machine.state
 
-import kotlinx.atomicfu.*
-import kotlinx.html.*
-import kotlinx.html.stream.createHTML
-
+import kotlinx.atomicfu.atomic
 import java.io.File
-
-
-typealias LogParentEntityId = Int
-typealias LogEntityId = Int
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.UUID
 
 const val DELIMETR = "|"
-const val NEW_LINE_DELIMETR = "{n}"
-const val INIT_STATE_LOG_ENTITY_ID: LogEntityId = 0
-const val INIT_INTERNAL_LOG_ENTITY_ID: LogEntityId = -1
 
 enum class Color {
     Red, Green, Yellow, White, Blue;
@@ -67,163 +61,144 @@ enum class EntityType {
     }
 }
 
-enum class LogClass {
-    Intern, User;
+open class LogEntity(
+    val name: String,
+    val color: Color = Color.Red,
+    val mark: EntityType
+) {
+    override fun toString(): String = "$mark" + DELIMETR + "$color" + DELIMETR + name
+}
 
-    override fun toString() = when (this) {
-        Intern -> "I"
-        User -> "U"
+class MethodReturn(methodName: String, color: Color = Color.Red) : LogEntity(methodName, color, EntityType.MInv)
+class ExceptionThrow(name: String, color: Color = Color.Blue) : LogEntity(name, color, EntityType.MInv)
+class ExceptionProcessed(name: String, color: Color = Color.Blue) : LogEntity(name, color, EntityType.ExEnd)
+class Info(msg: String, color: Color = Color.White) : LogEntity(msg, color, EntityType.Inf)
+class MethodInvoke(name: String, val type: InvokeType) : LogEntity(name, type.getColor(), EntityType.MInv) {
+    override fun toString(): String {
+        return super.toString() + DELIMETR + "$type"
     }
 }
 
-class FLogger(
-    private val fl: File = File(
-        "/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/usvm/SpringLogNew.log"
-    )
-) {
+class TODOFrameLogger(val pathToLogDir: String) {
 
-    enum class ParentMode {
-        State, Common;
+    val CONACAT = "_"
+
+    init {
+        initLogDir()
     }
 
-    private val id = atomic(INIT_STATE_LOG_ENTITY_ID)
-    private val internal_id = atomic(INIT_INTERNAL_LOG_ENTITY_ID)
+    private fun initLogDir() {
+        val directory = File(pathToLogDir)
+        if (directory.exists() && directory.isDirectory) {
+            val files = directory.listFiles()
 
-    private fun getId(mode: ParentMode) = when (mode) {
-        ParentMode.State -> id.incrementAndGet()
-        ParentMode.Common -> internal_id.decrementAndGet()
-    }
-
-    //region Entities (formatters)
-
-    private open class LogEntity(
-        val name: String,
-        val color: Color = Color.Red,
-        val link: Pair<LogParentEntityId, LogEntityId>,
-        val mark: EntityType
-    ) {
-        override fun toString(): String = "$mark" + DELIMETR + "$link" + DELIMETR + "$color" + DELIMETR + name
-    }
-
-    private class MethodInvoke(
-        name: String,
-        link: Pair<LogParentEntityId, LogEntityId>,
-        val type: InvokeType,
-    ) : LogEntity(name, type.getColor(), link, EntityType.MInv) {
-        override fun toString(): String {
-            return super.toString() + DELIMETR + "$type"
+            files?.forEach { file ->
+                try {
+                    if (file.isFile)
+                        file.delete()
+                } catch (e: IOException) {
+                    println("Can't delete file: ${file.name}: ${e.message}")
+                }
+            }
         }
     }
 
-    private class MethodReturn(
-        methodName: String, color: Color = Color.Red, link: Pair<LogParentEntityId, LogEntityId>
-    ) : LogEntity(methodName, color, link, EntityType.MInv)
+    enum class LogType {
+        COMMON, LOCAL;
 
-    private class ExceptionThrow(
-        name: String, color: Color = Color.Blue, link: Pair<LogParentEntityId, LogEntityId>
-    ) : LogEntity(name, color, link, EntityType.MInv)
-
-    private class ExceptionProcessed(
-        name: String, color: Color = Color.Blue, link: Pair<LogParentEntityId, LogEntityId>
-    ) : LogEntity(name, color, link, EntityType.ExEnd)
-
-    private class Info(
-        msg: String, color: Color = Color.White, link: Pair<LogParentEntityId, LogEntityId>
-    ) : LogEntity(msg, color, link, EntityType.Inf)
-
-    private data class LogMarker(
-        val msg: String,
-        val mark: InternalMark,
-        val link: Pair<LogParentEntityId, LogEntityId>,
-    ) {
-        override fun toString(): String = "$link" + DELIMETR + "$mark" + DELIMETR + msg
+        override fun toString(): String = when (this) {
+            COMMON -> "COMMON"
+            LOCAL -> "LOCAL"
+        }
     }
 
-    //endregion
+    val stateFiles = mutableMapOf<String, File>()
 
-    //region Print
+    var id = atomic(0)
 
-    private fun printLog(log: Any) {
-        if (log is LogEntity)
-            fl.appendText(LogClass.User.toString() + DELIMETR + log.toString().replace("\n", NEW_LINE_DELIMETR) + "\n")
-        else
-            fl.appendText(
-                LogClass.Intern.toString() + DELIMETR + log.toString().replace("\n", NEW_LINE_DELIMETR) + "\n"
+    fun getNewId(): Int {
+        return id.incrementAndGet();
+    }
+
+    private fun getNewLogFileName(prefix: String?) =
+        if (prefix == null) "${getNewId()}"
+        else prefix + CONACAT + "${getNewId()}"
+
+    fun addNewState(prefix: String? = null): String {
+        val newName = getNewLogFileName(prefix)
+        val newFile = File(pathToLogDir, "$newName.log")
+
+        if (prefix == null) {
+            File(pathToLogDir, "$newName.log").createNewFile()
+        } else {
+            assert(stateFiles[prefix] != null)
+            Files.copy(
+                stateFiles[prefix]!!.toPath(),
+                newFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING
             )
+        }
+
+        stateFiles[newName] = newFile
+        return newName
     }
 
-    private fun common_entity_log(
+    fun addNewLog(stateName: String?, log: LogEntity) {
+        if (stateName == null) {
+            for (fl in stateFiles.values)
+                fl.appendText("${LogType.COMMON}" + DELIMETR + "$log+\n")
+        } else {
+            val fl = stateFiles[stateName] ?: throw IllegalStateException("Existence state error")
+            fl.appendText("${LogType.LOCAL}" + DELIMETR + "$log+\n")
+        }
+    }
+
+    private fun prettyAddNewLog(
         type: EntityType,
-        parentId: LogParentEntityId,
-        mode: ParentMode,
+        stateName: String?,
         name: String = "<GENERIC>",
-        invType: InvokeType? = null
-    ): Int {
-        val newId = getId(mode);
+        invType: InvokeType? = null,
+        color: Color = Color.White
+    ) {
         when (type) {
-            EntityType.MInv -> printLog(
-                MethodInvoke(
-                    name,
-                    Pair(parentId, newId),
-                    invType ?: throw IllegalStateException("invType shouldn't be null with $type")
-                )
+            EntityType.MInv -> addNewLog(
+                stateName,
+                MethodInvoke(name, invType ?: throw IllegalStateException("invType shouldn't be null with $type"))
             )
 
-            EntityType.MRet -> printLog(MethodReturn(name, link = Pair(parentId, newId)))
-            EntityType.ExStart -> printLog(ExceptionThrow(name, link = Pair(parentId, newId)))
-            EntityType.ExEnd -> printLog(ExceptionProcessed(name, link = Pair(parentId, newId)))
-            EntityType.Inf -> printLog(Info(name, link = Pair(parentId, newId)))
+            EntityType.MRet -> addNewLog(stateName, MethodReturn(name))
+            EntityType.ExStart -> addNewLog(stateName, ExceptionThrow(name))
+            EntityType.ExEnd -> addNewLog(stateName, ExceptionProcessed(name))
+            EntityType.Inf -> addNewLog(stateName, Info(name, color = color))
         }
-        return newId
     }
 
-    fun log(
-        type: InternalMark,
-        parentId: LogParentEntityId,
-        msg: String = "<GENERIC>",
-        mode: ParentMode = ParentMode.Common
-    ): Int {
-        val newId = getId(mode);
-        printLog(LogMarker(msg, type, link = Pair(parentId, newId)))
-        return newId
-    }
+    fun logMethodInvoke(
+        stateName: String?,
+        methodName: String,
+        invType: InvokeType,
+    ) = prettyAddNewLog(EntityType.MInv, stateName, methodName, invType)
 
+    fun logMethodReturn(
+        stateName: String?,
+        methodName: String = "<GENERIC>",
+    ) = prettyAddNewLog(EntityType.MRet, stateName, methodName)
 
-    private fun common_intenal_log(
-        type: InternalMark,
-        parentId: LogParentEntityId,
-        msg: String = "<GENERIC>",
-        mode: ParentMode = ParentMode.Common
-    ): Int {
-        val newId = getId(mode);
-        printLog(LogMarker(msg, type, link = Pair(parentId, newId)))
-        return newId
-    }
+    fun logExnThrow(
+        stateName: String?,
+        exnName: String,
+    ) = prettyAddNewLog(EntityType.ExStart, stateName, exnName)
 
-    fun log(
-        type: EntityType,
-        name: String = "<GENERIC>",
-        invType: InvokeType? = null,
-    ) = common_entity_log(type, internal_id.value, ParentMode.Common, name, invType)
+    fun logExnProcessed(
+        stateName: String?,
+        exnName: String = "<GENERIC>",
+    ) = prettyAddNewLog(EntityType.ExEnd, stateName, exnName)
 
-    fun log(
-        type: EntityType,
-        parentId: LogParentEntityId,
-        name: String = "<GENERIC>",
-        invType: InvokeType? = null,
-    ) = common_entity_log(type, parentId, ParentMode.State, name, invType)
-
-    fun log(
-        type: InternalMark,
-        msg: String = "<GENERIC>",
-    ) = common_intenal_log(type, internal_id.value, msg, ParentMode.Common)
-
-    fun log(
-        type: InternalMark,
-        parentId: LogParentEntityId,
-        msg: String = "<GENERIC>",
-    ) = common_intenal_log(type, parentId, msg, ParentMode.State)
-    //endregion
+    fun logInfo(
+        stateName: String?,
+        msg: String,
+        color: Color = Color.White
+    ) = prettyAddNewLog(EntityType.ExEnd, stateName, msg, color = color)
 }
 
 
