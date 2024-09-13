@@ -1,6 +1,8 @@
 package org.usvm.machine.state
 
 import kotlinx.atomicfu.*
+import kotlinx.html.*
+import kotlinx.html.stream.createHTML
 
 import java.io.File
 
@@ -31,9 +33,9 @@ enum class InvokeType {
     Concrete, Symbolic, SymbButCanBeConc;
 
     override fun toString(): String = when (this) {
-        Concrete -> "Conc"
-        Symbolic -> "Symb"
-        SymbButCanBeConc -> "SumbButConc"
+        Concrete -> "C"
+        Symbolic -> "S"
+        SymbButCanBeConc -> "SbC"
     }
 
     fun getColor(): Color = when (this) {
@@ -65,6 +67,15 @@ enum class EntityType {
     }
 }
 
+enum class LogClass {
+    Intern, User;
+
+    override fun toString() = when (this) {
+        Intern -> "I"
+        User -> "U"
+    }
+}
+
 class FLogger(
     private val fl: File = File(
         "/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/usvm/SpringLogNew.log"
@@ -91,7 +102,7 @@ class FLogger(
         val link: Pair<LogParentEntityId, LogEntityId>,
         val mark: EntityType
     ) {
-        override fun toString(): String = "$link" + DELIMETR + "$color" + DELIMETR + name
+        override fun toString(): String = "$mark" + DELIMETR + "$link" + DELIMETR + "$color" + DELIMETR + name
     }
 
     private class MethodInvoke(
@@ -132,7 +143,14 @@ class FLogger(
 
     //region Print
 
-    private fun printLog(log: Any) = fl.appendText(log.toString().replace("\n", NEW_LINE_DELIMETR) + "\n")
+    private fun printLog(log: Any) {
+        if (log is LogEntity)
+            fl.appendText(LogClass.User.toString() + DELIMETR + log.toString().replace("\n", NEW_LINE_DELIMETR) + "\n")
+        else
+            fl.appendText(
+                LogClass.Intern.toString() + DELIMETR + log.toString().replace("\n", NEW_LINE_DELIMETR) + "\n"
+            )
+    }
 
     private fun common_entity_log(
         type: EntityType,
@@ -205,7 +223,7 @@ class FLogger(
         parentId: LogParentEntityId,
         msg: String = "<GENERIC>",
     ) = common_intenal_log(type, parentId, msg, ParentMode.State)
-
     //endregion
 }
+
 
