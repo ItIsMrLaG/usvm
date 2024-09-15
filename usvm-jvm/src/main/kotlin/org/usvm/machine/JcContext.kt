@@ -28,7 +28,7 @@ import org.usvm.USort
 import org.usvm.machine.interpreter.JcLambdaCallSiteRegionId
 import org.usvm.machine.interpreter.statics.JcStaticFieldReading
 import org.usvm.machine.interpreter.statics.JcStaticFieldRegionId
-import org.usvm.machine.state.TODOFrameLogger
+import org.usvm.machine.state.FrameLogger
 import org.usvm.util.extractJcRefType
 
 internal typealias USizeSort = UBv32Sort
@@ -37,7 +37,11 @@ class JcContext(
     val cp: JcClasspath,
     components: JcComponents,
 ) : UContext<USizeSort>(components) {
-    val fLogger = TODOFrameLogger("/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/usvm/HtmlLogs")
+    val fLogger = FrameLogger("/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/usvm/HtmlLogs")
+
+    init {
+        fLogger.initLogDir()
+    }
 
     val voidSort by lazy { JcVoidSort(this) }
 
