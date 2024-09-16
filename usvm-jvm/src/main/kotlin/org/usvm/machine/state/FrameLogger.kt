@@ -14,15 +14,16 @@ const val DELIMETR = "|"
 const val EXTENSION = "slog"
 
 enum class Color {
-    Red, Green, Yellow, White, Blue;
+    Red, Green, Yellow, White, Blue, Orange;
 
     override fun toString(): String {
         return when (this) {
             Red -> "#DA6C75"
             Green -> "#98C379"
             Yellow -> "#CB9A66"
-            White -> "#A7B2BF"
+            White -> "#677B8B"
             Blue -> "#57A8F2"
+            Orange -> "#FC7A21"
         }
     }
 }
@@ -37,9 +38,9 @@ enum class InvokeType {
     }
 
     fun getColor(): Color = when (this) {
-        Concrete -> Color.Red
-        Symbolic -> Color.Green
-        SymbButCanBeConc -> Color.Yellow
+        Concrete -> Red
+        Symbolic -> Green
+        SymbButCanBeConc -> Yellow
     }
 }
 
@@ -66,7 +67,7 @@ enum class LogType {
 
 open class LogEntity(
     val name: String,
-    var color: Color = Color.Red,
+    var color: Color = Red,
     val mark: EntityType,
     var logType: LogType = LogType.LOCAL,
 ) {
@@ -104,6 +105,7 @@ class FrameLogger(val pathToLogDir: String) {
     }
 
     val stateFiles = mutableMapOf<String, File>()
+    private val render = HtmlRender()
 
     var id = atomic(0)
 
@@ -118,9 +120,11 @@ class FrameLogger(val pathToLogDir: String) {
     fun addNewState(prefix: String? = null): String {
         val newName = getNewLogFileName(prefix)
         val newFile = File(pathToLogDir, "$newName.$EXTENSION")
+        stateFiles[newName] = newFile
 
         if (prefix == null) {
             File(pathToLogDir, "$newName.$EXTENSION").createNewFile()
+            stateFiles[newName] = newFile
         } else {
             assert(stateFiles[prefix] != null)
             Files.copy(
@@ -128,9 +132,10 @@ class FrameLogger(val pathToLogDir: String) {
                 newFile.toPath(),
                 StandardCopyOption.REPLACE_EXISTING
             )
+            logInfo(newName, "FORKED from ${prefix.split("_").last()}!", color = Orange)
+            logInfo(prefix, "FORK to ${newName.split("_").last()}!", color = Orange)
         }
 
-        stateFiles[newName] = newFile
         return newName
     }
 
@@ -150,18 +155,18 @@ class FrameLogger(val pathToLogDir: String) {
         stateName: String?,
         name: String = "<GENERIC>",
         invType: InvokeType? = null,
-        color: Color = Color.White
+        color: Color = White
     ) {
         when (type) {
-            EntityType.MInv -> addNewLog(
+            MInv -> addNewLog(
                 stateName,
                 MethodInvoke(name, invType ?: throw IllegalStateException("invType shouldn't be null with $type"))
             )
 
-            EntityType.MRet -> addNewLog(stateName, MethodReturn(name))
-            EntityType.ExStart -> addNewLog(stateName, ExceptionThrow(name))
-            EntityType.ExEnd -> addNewLog(stateName, ExceptionProcessed(name))
-            EntityType.Inf -> addNewLog(stateName, Info(name, color = color))
+            MRet -> addNewLog(stateName, MethodReturn(name))
+            ExStart -> addNewLog(stateName, ExceptionThrow(name))
+            ExEnd -> addNewLog(stateName, ExceptionProcessed(name))
+            Inf -> addNewLog(stateName, Info(name, color = color))
         }
     }
 
@@ -169,28 +174,28 @@ class FrameLogger(val pathToLogDir: String) {
         stateName: String?,
         methodName: String,
         invType: InvokeType,
-    ) = prettyAddNewLog(EntityType.MInv, stateName, methodName, invType)
+    ) = prettyAddNewLog(MInv, stateName, methodName, invType)
 
     fun logMethodReturn(
         stateName: String?,
         methodName: String = "<GENERIC>",
-    ) = prettyAddNewLog(EntityType.MRet, stateName, methodName)
+    ) = prettyAddNewLog(MRet, stateName, methodName)
 
     fun logExnThrow(
         stateName: String?,
         exnName: String,
-    ) = prettyAddNewLog(EntityType.ExStart, stateName, exnName)
+    ) = prettyAddNewLog(ExStart, stateName, exnName)
 
     fun logExnProcessed(
         stateName: String?,
         exnName: String = "<GENERIC>",
-    ) = prettyAddNewLog(EntityType.ExEnd, stateName, exnName)
+    ) = prettyAddNewLog(ExEnd, stateName, exnName)
 
     fun logInfo(
         stateName: String?,
         msg: String,
-        color: Color = Color.White
-    ) = prettyAddNewLog(EntityType.ExEnd, stateName, msg, color = color)
+        color: Color = White
+    ) = prettyAddNewLog(Inf, stateName, msg, color = color)
 
     private fun getFilesList(): List<File> {
         val folder = File(pathToLogDir)
@@ -223,6 +228,7 @@ class FrameLogger(val pathToLogDir: String) {
             Yellow.toString() -> Yellow
             White.toString() -> White
             Blue.toString() -> Blue
+            Orange.toString() -> Orange
             else -> throw IllegalStateException("Unsupported COLOR: ${structure[2]}")
         }
 
@@ -250,44 +256,101 @@ class FrameLogger(val pathToLogDir: String) {
         return ret
     }
 
-    private fun generateStateHtmlRepresentation(logFile: File): String {
-        logFile.readLines().forEach { line ->
-            getLogEntity(line).toString()
-            TODO()
+    private fun generateStateHtmlRepresentation(name: String, logFile: File, typeFilter: LogType? = null): String {
+        val lines = logFile.readLines().map { line -> getLogEntity(line) }.filter { log ->
+            when (typeFilter) {
+                null -> true
+                LogType.COMMON -> log.logType == LogType.COMMON
+                LogType.LOCAL -> log.logType == LogType.LOCAL
+            }
         }
-        return "TODO"
+        return render.renderStateHtmlFile(name, lines)
     }
 
+    private fun getCommonLogs(logFile: File): List<LogEntity> =
+        logFile.readLines().map { line -> getLogEntity(line) }.filter { log -> log.logType == LogType.COMMON }.toList()
+
     fun generateHtmlConclusion(pathToHtmlResDir: String) {
-        println(pathToHtmlResDir)
         val logFiles = getFilesList()
-        logFiles.forEach { fl ->
-            generateStateHtmlRepresentation(fl)
+        val htmlStates = mutableListOf<String>()
+        logFiles.sortedBy { fl -> fl.name } .forEach { fl ->
+            val name = fl.name.split('/').last().split('.')[0]
+            val result = generateStateHtmlRepresentation(name, fl)
+            htmlStates.add(result)
         }
+        val commonLogs = if (logFiles.isEmpty()) listOf() else getCommonLogs(logFiles[0])
+        val htmlCommon = render.renderCommonStatesHtmlFile(commonLogs)
+        val conclusion = render.renderCommonHtmlFile(htmlStates, htmlCommon)
+        File(pathToHtmlResDir, "conclusion.html").writeText(conclusion)
     }
 }
 
 class HtmlRender {
-    fun renderLogEntity(log: LogEntity): String = TODO()
 
     fun renderStateHtmlFile(name: String, logs: List<LogEntity>): String = createHTML().body {
         div("state-container") {
             div("state-container-info") {
-                p { +"State: $name" }
+                p { +"State: ${name.split("_").last()} (fork path: $name)" }
             }
             details {
                 summary { +"steps:" }
                 div("state-steps") {
                     ol {
                         for (log in logs)
-                            li { +renderLogEntity(log) }
+                            li {
+                                p {
+                                    style = "color: ${log.color};"
+                                    +"[${log.logType}] "
+                                    +when (log) {
+                                        is MethodInvoke -> when (log.type) {
+                                            InvokeType.Symbolic -> "SYMBOLIC: "
+                                            InvokeType.Concrete -> "CONCRETE: "
+                                            InvokeType.SymbButCanBeConc -> "CAN_CONCRETE: "
+                                        }
+
+                                        is ExceptionThrow -> "THROW: "
+                                        is ExceptionProcessed -> "EXN_PROCESSED: "
+                                        is Info -> "MSG: "
+                                        is MethodReturn -> "RETURN: "
+                                        else -> throw IllegalStateException("Impossible EntityType: ${log::class.simpleName}")
+                                    }
+                                    +log.name
+                                }
+                            }
                     }
                 }
             }
         }
     }
 
-    fun renderCommonHtmlFile(fileContents: List<String>): String {
+    fun renderCommonStatesHtmlFile(logs: List<LogEntity>): String = createHTML().body {
+        ol {
+            summary { h2 { +"COMMON LOGS:" } }
+            for (log in logs)
+                li {
+                    p {
+                        style = "color: ${log.color};"
+                        +"[${log.logType}]"
+                        +when (log) {
+                            is MethodInvoke -> when (log.type) {
+                                InvokeType.Symbolic -> "SYMBOLIC: "
+                                InvokeType.Concrete -> "CONCRETE: "
+                                InvokeType.SymbButCanBeConc -> "CAN_CONCRETE: "
+                            }
+
+                            is ExceptionThrow -> "THROW: "
+                            is ExceptionProcessed -> "EXN_PROCESSED: "
+                            is Info -> "MSG: "
+                            is MethodReturn -> "RETURN: "
+                            else -> throw IllegalStateException("Impossible EntityType: ${log::class.simpleName}")
+                        }
+                        +log.name
+                    }
+                }
+        }
+    }
+
+    fun renderCommonHtmlFile(fileContents: List<String>, commonFileContent: String): String {
         val mainHtmlContent = createHTML().html {
             head {
                 title("Spring-Logs")
@@ -354,7 +417,7 @@ class HtmlRender {
                         display: flex;
                         justify-content: center;
                         align-items: center;
-                        border-top: 2px solid #b2dfdb; /* Разделительная линия сверху */
+                        border-top: 7px solid #b2dfdb; /* Разделительная линия сверху */
                     }
                     button {
                         background-color: #80deea; /* Цвет кнопки */
@@ -394,13 +457,17 @@ class HtmlRender {
                     div("top") {
                         div("top-left") {
                             id = "left-panel"
-                            p { +"TODO: граф состояний" }
+                            unsafe {
+                                +commonFileContent
+                            }
+
                         }
                         div("resizer") {
                             id = "resizer"
                         }
                         div("top-right") {
                             id = "right-panel"
+                            summary { h2 { +"States:" } }
                             fileContents.forEach { content ->
                                 unsafe {
                                     +content
@@ -411,7 +478,7 @@ class HtmlRender {
                     div("bottom") {
                         button {
                             id = "toggle-button"
-                            +"Toggle Left Panel"
+                            +"OPEN COMMON LOGS"
                         }
                     }
                 }
