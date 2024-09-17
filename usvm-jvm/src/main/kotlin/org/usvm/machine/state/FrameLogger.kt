@@ -45,7 +45,7 @@ enum class InvokeType {
 }
 
 enum class EntityType {
-    MInv, MRet, ExStart, ExEnd, Inf;
+    MInv, MRet, ExStart, ExEnd, Inf, InFork;
 
     override fun toString(): String = when (this) {
         MInv -> "MInv"
@@ -53,6 +53,7 @@ enum class EntityType {
         ExStart -> "ExStart"
         ExEnd -> "ExEnd"
         Inf -> "Inf"
+        InFork -> "Fork"
     }
 }
 
@@ -72,6 +73,24 @@ open class LogEntity(
     var logType: LogType = LogType.LOCAL,
 ) {
     override fun toString(): String = "$logType" + DELIMETR + "$mark" + DELIMETR + "$color" + DELIMETR + name
+}
+
+enum class ForkDirection {
+    D_FROM, D_TO;
+
+    override fun toString(): String = when (this) {
+        D_FROM -> "FROM"
+        D_TO -> "TO"
+    }
+}
+
+class Fork(val stateName: String, val direction: ForkDirection, color: Color = Orange) :
+    LogEntity(
+        "$direction: $stateName", color, InFork
+    ) {
+    override fun toString(): String {
+        return super.toString() + DELIMETR + stateName + DELIMETR + "$direction"
+    }
 }
 
 class MethodReturn(methodName: String, color: Color = Red) : LogEntity(methodName, color, MInv)
@@ -132,8 +151,7 @@ class FrameLogger(val pathToLogDir: String) {
                 newFile.toPath(),
                 StandardCopyOption.REPLACE_EXISTING
             )
-            logInfo(newName, "FORKED from ${prefix.split("_").last()}!", color = Orange)
-            logInfo(prefix, "FORK to ${newName.split("_").last()}!", color = Orange)
+            logStateFork(prefix, newName)
         }
 
         return newName
@@ -155,19 +173,24 @@ class FrameLogger(val pathToLogDir: String) {
         stateName: String?,
         name: String = "<GENERIC>",
         invType: InvokeType? = null,
-        color: Color = White
+        color: Color = White,
+        direction: ForkDirection = ForkDirection.D_FROM,
     ) {
-        when (type) {
-            MInv -> addNewLog(
-                stateName,
-                MethodInvoke(name, invType ?: throw IllegalStateException("invType shouldn't be null with $type"))
+        val logEntity = when (type) {
+            MInv -> MethodInvoke(name, invType ?: throw IllegalStateException("invType shouldn't be null with $type"))
+            MRet -> MethodReturn(name)
+            ExStart -> ExceptionThrow(name)
+            ExEnd -> ExceptionProcessed(name)
+            Inf -> Info(name, color = color)
+            InFork -> Fork(
+                stateName ?: throw IllegalStateException("stateName shouldn't be null with $type in Fork"),
+                direction
             )
-
-            MRet -> addNewLog(stateName, MethodReturn(name))
-            ExStart -> addNewLog(stateName, ExceptionThrow(name))
-            ExEnd -> addNewLog(stateName, ExceptionProcessed(name))
-            Inf -> addNewLog(stateName, Info(name, color = color))
         }
+        if (stateName != null) logEntity.logType = LogType.LOCAL
+        else logEntity.logType = LogType.COMMON
+
+        addNewLog(stateName, logEntity)
     }
 
     fun logMethodInvoke(
@@ -197,6 +220,24 @@ class FrameLogger(val pathToLogDir: String) {
         color: Color = White
     ) = prettyAddNewLog(Inf, stateName, msg, color = color)
 
+    private fun logForkStateTo(
+        stateName: String,
+        toStateName: String,
+    ) = prettyAddNewLog(InFork, stateName, toStateName.split("_").last(), direction = ForkDirection.D_TO)
+
+    private fun logForkedStateFrom(
+        stateName: String,
+        fromStateName: String,
+    ) = prettyAddNewLog(InFork, stateName, fromStateName.split("_").last(), direction = ForkDirection.D_FROM)
+
+    fun logStateFork(
+        parentStateName: String,
+        childStateName: String,
+    ) {
+        logForkStateTo(parentStateName, childStateName)
+        logForkedStateFrom(childStateName, parentStateName)
+    }
+
     private fun getFilesList(): List<File> {
         val folder = File(pathToLogDir)
 
@@ -211,7 +252,7 @@ class FrameLogger(val pathToLogDir: String) {
         val name: String
         val color: Color
         val logType: LogType
-        val ret: LogEntity
+        val retLogEntity: LogEntity
         val structure = logLine.split(DELIMETR)
 
         logType = when (structure[0]) {
@@ -234,7 +275,7 @@ class FrameLogger(val pathToLogDir: String) {
 
         name = structure[3]
 
-        ret = when (structure[1]) {
+        retLogEntity = when (structure[1]) {
             MInv.toString() -> {
                 val type = when (structure[4]) {
                     InvokeType.Concrete.toString() -> InvokeType.Concrete
@@ -245,15 +286,24 @@ class FrameLogger(val pathToLogDir: String) {
                 MethodInvoke(name, type)
             }
 
+            InFork.toString() -> {
+                val direction = when (structure[5]) {
+                    ForkDirection.D_FROM.toString() -> ForkDirection.D_FROM
+                    ForkDirection.D_TO.toString() -> ForkDirection.D_TO
+                    else -> throw IllegalStateException("Unsupported ForkDirection: ${structure[5]}")
+                }
+                Fork(structure[4], direction)
+            }
+
             MRet.toString() -> MethodReturn(name)
             ExStart.toString() -> ExceptionThrow(name)
             ExEnd.toString() -> ExceptionProcessed(name)
             Inf.toString() -> Info(name)
             else -> throw IllegalStateException("Impossible EntityType: ${structure[1]}")
         }
-        ret.color = color
-        ret.logType = logType
-        return ret
+        retLogEntity.color = color
+        retLogEntity.logType = logType
+        return retLogEntity
     }
 
     private fun generateStateHtmlRepresentation(name: String, logFile: File, typeFilter: LogType? = null): String {
@@ -273,7 +323,7 @@ class FrameLogger(val pathToLogDir: String) {
     fun generateHtmlConclusion(pathToHtmlResDir: String) {
         val logFiles = getFilesList()
         val htmlStates = mutableListOf<String>()
-        logFiles.sortedBy { fl -> fl.name } .forEach { fl ->
+        logFiles.sortedBy { fl -> fl.name }.forEach { fl ->
             val name = fl.name.split('/').last().split('.')[0]
             val result = generateStateHtmlRepresentation(name, fl)
             htmlStates.add(result)
@@ -312,6 +362,10 @@ class HtmlRender {
                                         is ExceptionProcessed -> "EXN_PROCESSED: "
                                         is Info -> "MSG: "
                                         is MethodReturn -> "RETURN: "
+                                        is Fork -> when (log.direction) {
+                                            ForkDirection.D_TO -> "FORK: "
+                                            ForkDirection.D_FROM -> "FORKED: "
+                                        }
                                         else -> throw IllegalStateException("Impossible EntityType: ${log::class.simpleName}")
                                     }
                                     +log.name
@@ -323,6 +377,7 @@ class HtmlRender {
         }
     }
 
+
     fun renderCommonStatesHtmlFile(logs: List<LogEntity>): String = createHTML().body {
         ol {
             summary { h2 { +"COMMON LOGS:" } }
@@ -330,7 +385,6 @@ class HtmlRender {
                 li {
                     p {
                         style = "color: ${log.color};"
-                        +"[${log.logType}]"
                         +when (log) {
                             is MethodInvoke -> when (log.type) {
                                 InvokeType.Symbolic -> "SYMBOLIC: "
@@ -349,6 +403,7 @@ class HtmlRender {
                 }
         }
     }
+
 
     fun renderCommonHtmlFile(fileContents: List<String>, commonFileContent: String): String {
         val mainHtmlContent = createHTML().html {
@@ -533,8 +588,8 @@ class HtmlRender {
         }
         return mainHtmlContent
     }
-}
 
+}
 
 fun main() {
     val lg = FrameLogger("/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/usvm/HtmlLogs")
