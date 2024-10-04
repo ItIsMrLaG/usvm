@@ -1131,7 +1131,10 @@ private class JcConcreteMemoryBindings(
                     return obj
                 }
             }
-            else -> return obj
+            else -> {
+                println("else case in cloneObject()")
+                return obj
+            }
         }
     }
 
@@ -2365,7 +2368,7 @@ private class Marshall(
             if (objJavaClass.isLambda) {
                 val db = ctx.cp.db
                 val vfs = db.javaClass.allInstanceFields.find { it.name == "classesVfs" }!!.getFieldValue(db)!!
-                val loc = ctx.cp.registeredLocations.find { it.jcLocation?.jarOrFolder?.absolutePath?.startsWith("/Users/michael/Documents/Work/spring-petclinic/build/libs/BOOT-INF/classes") == true }!!
+                val loc = ctx.cp.registeredLocations.find { it.jcLocation?.jarOrFolder?.absolutePath?.startsWith("/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF/classes") == true }!!
                 val addMethod = vfs.javaClass.methods.find { it.name == "addClass" }!!
                 val source = LazyClassSourceImpl(loc, typeName)
                 addMethod.invoke(vfs, source)
