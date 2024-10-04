@@ -534,7 +534,7 @@ class JcMethodApproximationResolver(
                 .mapNotNull { ctx.cp.findClassOrNull(it) }
                 .filterNot { it is JcUnknownClass }
                 // TODO: filter deps classes #Spring use JcMachineOptions.projectLocations
-                .filter { it.declaration.location.path.equals("/home/gora/PROG_SPBU/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF/classes") }
+                .filter { it.declaration.location.path.equals("/home/gora/AdiskD/PROG_SPBGU_HW/PROG_SPBU_3/spring-petclinic/build/libs/BOOT-INF/classes") }
                 .filter {
                     !it.isAbstract && !it.isInterface && !it.isAnonymous && it.annotations.any {
                         it.name.equals(

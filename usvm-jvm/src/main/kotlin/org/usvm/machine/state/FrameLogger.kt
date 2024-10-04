@@ -38,8 +38,8 @@ enum class InvokeType {
     }
 
     fun getColor(): Color = when (this) {
-        Concrete -> Red
-        Symbolic -> Green
+        Concrete -> Green
+        Symbolic -> Red
         SymbButCanBeConc -> Yellow
     }
 }
