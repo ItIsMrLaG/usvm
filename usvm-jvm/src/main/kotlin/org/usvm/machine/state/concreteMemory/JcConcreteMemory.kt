@@ -675,6 +675,7 @@ private class JcConcreteMemoryBindings(
                                     setChild(phys!!, child, ArrayIndexChildKind(i))
                                 }
                             }
+
                             else -> error("reTrack: unexpected array $current")
                         }
                     }
@@ -1374,47 +1375,56 @@ private class JcConcreteMemoryBindings(
                                 oldObj[i] = v
                             }
                         }
+
                         obj is ByteArray && oldObj is ByteArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is CharArray && oldObj is CharArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is LongArray && oldObj is LongArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is FloatArray && oldObj is FloatArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is ShortArray && oldObj is ShortArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is DoubleArray && oldObj is DoubleArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is BooleanArray && oldObj is BooleanArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is Array<*> && oldObj is Array<*> -> {
                             oldObj as Array<Any?>
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         else -> error("applyBacktrack: unexpected array $obj")
                     }
                 }
@@ -1528,7 +1538,8 @@ private class JcConcreteFieldRegion<Sort : USort>(
     private val jcField by lazy { regionId.field }
     private val javaField by lazy { jcField.toJavaField }
     private val isApproximation by lazy { javaField == null }
-//    private val isPrimitiveApproximation by lazy { isApproximation && jcField.name == "value" }
+
+    //    private val isPrimitiveApproximation by lazy { isApproximation && jcField.name == "value" }
     private val sort by lazy { regionId.sort }
     private val typedField: JcTypedField by lazy { jcField.typedField }
     private val fieldType: JcType by lazy { typedField.type }
@@ -1655,13 +1666,13 @@ private class JcConcreteArrayRegion<Sort : USort>(
                 fromSrcIdxObj.hasValue && fromDstIdxObj.hasValue && toDstIdxObj.hasValue && operationGuard.isTrue
             val success =
                 isConcreteCopy &&
-                    bindings.arrayCopy(
-                        srcRef.address,
-                        dstRef.address,
-                        fromSrcIdxObj.value as Int,
-                        fromDstIdxObj.value as Int,
-                        toDstIdxObj.value as Int + 1 // Incrementing 'toDstIdx' index to make it exclusive
-                    )
+                        bindings.arrayCopy(
+                            srcRef.address,
+                            dstRef.address,
+                            fromSrcIdxObj.value as Int,
+                            fromDstIdxObj.value as Int,
+                            toDstIdxObj.value as Int + 1 // Incrementing 'toDstIdx' index to make it exclusive
+                        )
             if (success) {
                 return this
             }
@@ -1673,7 +1684,8 @@ private class JcConcreteArrayRegion<Sort : USort>(
         if (dstRef is UConcreteHeapRef)
             marshall.unmarshallArray(dstRef.address)
 
-        baseRegion = baseRegion.memcpy(srcRef, dstRef, type, elementSort, fromSrcIdx, fromDstIdx, toDstIdx, operationGuard)
+        baseRegion =
+            baseRegion.memcpy(srcRef, dstRef, type, elementSort, fromSrcIdx, fromDstIdx, toDstIdx, operationGuard)
 
         return this
     }
@@ -2229,7 +2241,12 @@ private class JcConcreteRefSetRegion(
             val keyObj = marshall.tryExprToObj(key.setElement, objType)
             val valueObj = marshall.tryExprToObj(value, ctx.cp.boolean)
             val isConcreteWrite = valueObj.hasValue && keyObj.hasValue && guard.isTrue
-            if (isConcreteWrite && bindings.changeSetContainsElement(address, keyObj.value, valueObj.value as Boolean)) {
+            if (isConcreteWrite && bindings.changeSetContainsElement(
+                    address,
+                    keyObj.value,
+                    valueObj.value as Boolean
+                )
+            ) {
                 return this
             }
 
@@ -3219,7 +3236,7 @@ class JcConcreteMemory private constructor(
         return null
     }
 
-    override fun <Sort: USort> tryExprToInt(expr: UExpr<Sort>): Int? {
+    override fun <Sort : USort> tryExprToInt(expr: UExpr<Sort>): Int? {
         val maybe = marshall.tryExprToFullyConcreteObj(expr, ctx.cp.int)
         check(!(maybe.hasValue && maybe.value == null))
         if (maybe.hasValue)
@@ -3299,8 +3316,14 @@ class JcConcreteMemory private constructor(
 
     private inner class JcConcretizer(
         state: JcState
-    ) : JcTestStateResolver<Any?>(state.ctx, state.models.first(), state.memory, state.callStack.lastMethod().enclosingClass.toType().declaredMethods.first()) {
-        override val decoderApi: JcTestInterpreterDecoderApi = JcTestInterpreterDecoderApi(ctx, JcConcreteMemoryClassLoader)
+    ) : JcTestStateResolver<Any?>(
+        state.ctx,
+        state.models.first(),
+        state.memory,
+        state.callStack.lastMethod().enclosingClass.toType().declaredMethods.first()
+    ) {
+        override val decoderApi: JcTestInterpreterDecoderApi =
+            JcTestInterpreterDecoderApi(ctx, JcConcreteMemoryClassLoader)
 
         override fun tryCreateObjectInstance(ref: UConcreteHeapRef, heapRef: UHeapRef): Any? {
             val addressInModel = ref.address
