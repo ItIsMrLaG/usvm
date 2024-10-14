@@ -87,6 +87,7 @@ dependencies {
     // Use usvm-api in samples for makeSymbolic, assume, etc.
     samplesImplementation(`usvm-api`.output)
 
+    implementation(project(":usvm-jvm-instrumentation"))
     testImplementation(project(":usvm-jvm-instrumentation"))
 }
 

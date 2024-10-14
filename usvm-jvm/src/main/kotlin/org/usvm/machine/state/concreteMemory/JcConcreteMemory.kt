@@ -99,6 +99,8 @@ import org.usvm.collection.set.ref.URefSetEntryLValue
 import org.usvm.collection.set.ref.URefSetRegion
 import org.usvm.collection.set.ref.URefSetRegionId
 import org.usvm.constraints.UTypeConstraints
+import org.usvm.instrumentation.util.getFieldValue as getFieldValueInstrumentationUtil
+import org.usvm.instrumentation.util.setFieldValue as setFieldValueInstrumentationUtil
 import org.usvm.isFalse
 import org.usvm.isTrue
 import org.usvm.machine.JcConcreteInvocationResult
@@ -127,6 +129,7 @@ import org.usvm.util.Maybe
 import org.usvm.util.jcTypeOf
 import org.usvm.util.name
 import org.usvm.util.typedField
+import java.lang.invoke.MethodHandles
 import java.lang.reflect.Field
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -135,11 +138,11 @@ import java.lang.reflect.Modifier
 import java.lang.reflect.Proxy
 import java.util.LinkedList
 import java.util.Queue
+import java.nio.ByteBuffer
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
-
 //region Physical Address
 
 private data class PhysicalAddress(
@@ -296,6 +299,9 @@ private val notTrackedTypes = setOf(
 private val Class<*>.isProxy: Boolean
     get() = Proxy.isProxyClass(this)
 
+private val Class<*>.isByteBuffer: Boolean
+    get() = ByteBuffer::class.java.isAssignableFrom(this)
+
 private val Class<*>.isLambda: Boolean
     get() = typeName.contains('/') && typeName.contains("\$\$Lambda\$")
 
@@ -312,33 +318,28 @@ private val JcType.notTracked: Boolean
                 (this.jcClass.isEnum || notTrackedTypes.contains(this.name))
 
 private val immutableTypes = setOf(
-    "java.lang.Integer",
-    "java.lang.Byte",
-    "java.lang.Short",
-    "java.lang.Long",
-    "java.lang.Float",
-    "java.lang.Double",
-    "java.lang.Boolean",
-    "java.lang.Character",
-    "java.lang.String",
     "jdk.internal.loader.ClassLoaders\$AppClassLoader",
     "java.security.AllPermission",
     "java.net.NetPermission",
-    "java.lang.reflect.Method",
-    "java.lang.Class",
 )
 
-private val Class<*>.isImmutable: Boolean
-    get() = immutableTypes.contains(this.name) || ClassLoader::class.java.isAssignableFrom(this)
+private val Class<*>.isFromLangOrReflect: Boolean
+    get() = this.packageName in setOf("java.lang", "java.lang.reflect")
 
-private val JcType.isImmutable: Boolean
-    get() = this is JcClassType && immutableTypes.contains(this.name)
+private val Class<*>.isImmutable: Boolean
+    get() = immutableTypes.contains(this.name) ||
+            ClassLoader::class.java.isAssignableFrom(this) ||
+            this.isFromLangOrReflect
 
 private val Class<*>.isSolid: Boolean
     get() =
         notTracked ||
                 immutableTypes.contains(this.name) ||
-                this.isArray && this.componentType.notTracked
+                this.isArray && this.componentType.notTracked ||
+                this.isFromLangOrReflect
+
+private val JcType.isImmutable: Boolean
+    get() = this is JcClassType && immutableTypes.contains(this.name)
 
 private val JcType.isSolid: Boolean
     get() =
@@ -552,6 +553,7 @@ private class JcConcreteMemoryBindings(
                                     setChild(phys!!, child, ArrayIndexChildKind(i))
                                 }
                             }
+
                             else -> error("reTrack: unexpected array $current")
                         }
                     }
@@ -1093,47 +1095,42 @@ private class JcConcreteMemoryBindings(
     //region Backtracking
 
     private fun cloneObject(obj: Any): Any {
-        // TODO: (1) do not clone java.lang and java.lang.reflect
-        // TODO: (2) do not clone Proxy and Lambda, but go to it's children and clone them (closure)
-        // TODO: (3) do not clone ByteBuffer (mapping on memory)
-        // TODO: (4) do not clone objects without fields (marker objects)
-        // TODO: (5) use getFieldValue and setFieldValue from instrumentation.Reflection
         val type = obj.javaClass
         val jcType = type.toJcType(ctx) ?: return obj
-        when {
-            type.isImmutable -> return obj
-            // TODO: clone lambda and maybe proxy #CM
-            type.isProxy || type.isLambda -> return obj
-            jcType is JcArrayType -> {
-                return when (obj) {
-                    is IntArray -> obj.clone()
-                    is ByteArray -> obj.clone()
-                    is CharArray -> obj.clone()
-                    is LongArray -> obj.clone()
-                    is FloatArray -> obj.clone()
-                    is ShortArray -> obj.clone()
-                    is DoubleArray -> obj.clone()
-                    is BooleanArray -> obj.clone()
-                    is Array<*> -> obj.clone()
-                    else -> error("cloneObject: unexpected array $obj")
-                }
+
+        return when {
+            type.allInstanceFields.isEmpty() -> obj
+            type.isImmutable -> obj
+            type.isProxy || type.isLambda -> obj
+            type.isByteBuffer -> obj
+            jcType is JcArrayType -> when (obj) {
+                is IntArray -> obj.clone()
+                is ByteArray -> obj.clone()
+                is CharArray -> obj.clone()
+                is LongArray -> obj.clone()
+                is FloatArray -> obj.clone()
+                is ShortArray -> obj.clone()
+                is DoubleArray -> obj.clone()
+                is BooleanArray -> obj.clone()
+                is Array<*> -> obj.clone()
+                else -> error("cloneObject: unexpected array $obj")
             }
-            jcType is JcClassType -> {
-                try {
-                    val newObj = jcType.allocateInstance(JcConcreteMemoryClassLoader)
-                    for (field in type.allInstanceFields) {
-                        val value = field.getFieldValue(obj)
-                        field.setFieldValue(newObj, value)
-                    }
-                    return newObj
-                } catch (e: Exception) {
-                    println("cloneObject failed on class ${type.name}")
-                    return obj
+
+            jcType is JcClassType -> try {
+                val newObj = jcType.allocateInstance(JcConcreteMemoryClassLoader)
+                for (field in type.allInstanceFields) {
+                    val value = field.getFieldValueInstrumentationUtil(obj)
+                    field.setFieldValueInstrumentationUtil(newObj, value)
                 }
+                newObj
+            } catch (e: Exception) {
+                println("cloneObject failed on class ${type.name}")
+                obj
             }
+
             else -> {
                 println("else case in cloneObject()")
-                return obj
+                obj
             }
         }
     }
@@ -1191,47 +1188,56 @@ private class JcConcreteMemoryBindings(
                                 oldObj[i] = v
                             }
                         }
+
                         obj is ByteArray && oldObj is ByteArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is CharArray && oldObj is CharArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is LongArray && oldObj is LongArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is FloatArray && oldObj is FloatArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is ShortArray && oldObj is ShortArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is DoubleArray && oldObj is DoubleArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is BooleanArray && oldObj is BooleanArray -> {
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         obj is Array<*> && oldObj is Array<*> -> {
                             oldObj as Array<Any?>
                             obj.forEachIndexed { i, v ->
                                 oldObj[i] = v
                             }
                         }
+
                         else -> error("applyBacktrack: unexpected array $obj")
                     }
                 }
@@ -1327,7 +1333,8 @@ private class JcConcreteFieldRegion<Sort : USort>(
     private val jcField by lazy { regionId.field }
     private val javaField by lazy { jcField.toJavaField }
     private val isApproximation by lazy { javaField == null }
-//    private val isPrimitiveApproximation by lazy { isApproximation && jcField.name == "value" }
+
+    //    private val isPrimitiveApproximation by lazy { isApproximation && jcField.name == "value" }
     private val sort by lazy { regionId.sort }
     private val typedField: JcTypedField by lazy { jcField.typedField }
     private val fieldType: JcType by lazy { typedField.type }
@@ -1460,7 +1467,7 @@ private class JcConcreteArrayRegion<Sort : USort>(
                         fromSrcIdxObj.value as Int,
                         fromDstIdxObj.value as Int,
                         toDstIdxObj.value as Int + 1 // Incrementing 'toDstIdx' index to make it exclusive
-                    )
+                        )
             if (success) {
                 return this
             }
