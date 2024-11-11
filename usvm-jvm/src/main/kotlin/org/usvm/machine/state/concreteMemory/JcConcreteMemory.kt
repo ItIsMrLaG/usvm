@@ -77,6 +77,7 @@ import org.usvm.api.util.Reflection.getFieldValue
 import org.usvm.api.util.Reflection.invoke
 import org.usvm.api.util.Reflection.toJavaClass
 import org.usvm.api.util.Reflection.toJavaExecutable
+import org.usvm.instrumentation.util.ensureDeclaringClassInitializedUnsafe
 import org.usvm.instrumentation.util.getFieldValue as getFieldValueUnsafe
 import org.usvm.instrumentation.util.setFieldValue as setFieldValueUnsafe
 import org.usvm.collection.array.UArrayIndexLValue
@@ -234,15 +235,23 @@ fun Field.getFieldValue(obj: Any): Any? {
 fun Field.getStaticFieldValue(): Any? {
     check(isStatic)
     isAccessible = true
-    return get(null)
+//    return get(null)
 //     TODO: null!! #CM #Valya
-//    return getFieldValueUnsafe(null)
+
+//    TODO: #CM #Valya getFieldValueUnsafe ~ getFieldValue in case when ReflectionUtils.UNSAFE.ensureClassInitialized
+//      was invoked (problem with clinit invocation. It seems that getFieldValueUnsafe invoke on uninitialized class)
+    ensureDeclaringClassInitializedUnsafe()
+    return getFieldValueUnsafe(null)
 }
 
 fun Field.setStaticFieldValue(value: Any?) {
 //    isAccessible = true
 //    set(null, value)
+    ensureDeclaringClassInitializedUnsafe()
     setFieldValueUnsafe(null, value)
+
+    val actual_value = getStaticFieldValue()
+    check(value == actual_value)
 }
 
 private val Field.isFinal: Boolean
@@ -2317,11 +2326,13 @@ private class JcConcreteStaticFieldsRegion<Sort : USort>(
             return baseRegion.read(key)
 
         check(JcConcreteMemoryClassLoader.isLoaded(field.enclosingClass))
+        check(field.toJavaField != null) // original class contains the field
+
         val fieldType = field.typedField.type
         val javaField = field.toJavaField!!
         val value = javaField.getStaticFieldValue()
-        // TODO: differs from jcField.getFieldValue(JcConcreteMemoryClassLoader, null) #CM
 //        val value = field.getFieldValue(JcConcreteMemoryClassLoader, null)
+//         TODO: differs from jcField.getFieldValue(JcConcreteMemoryClassLoader, null) #CM
         return marshall.objToExpr(value, fieldType)
     }
 

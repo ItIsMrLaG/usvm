@@ -23,6 +23,11 @@ object ReflectionUtils {
 
 }
 
+@Suppress("removal")
+fun Field.ensureDeclaringClassInitializedUnsafe() = ReflectionUtils.UNSAFE.ensureClassInitialized(
+    this.declaringClass
+)
+
 fun Field.getFieldValue(instance: Any?): Any? = with(ReflectionUtils.UNSAFE) {
     val (fixedInstance, fieldOffset) = getInstanceAndOffset(instance)
     return when (type) {
