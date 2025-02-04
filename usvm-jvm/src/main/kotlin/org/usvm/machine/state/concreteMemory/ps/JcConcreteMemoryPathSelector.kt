@@ -1,16 +1,13 @@
 package org.usvm.machine.state.concreteMemory.ps
 
 import org.jacodb.api.jvm.JcClassType
-import org.jacodb.api.jvm.cfg.JcExpr
 import org.usvm.UConcreteHeapRef
 import org.usvm.UHeapRef
 import org.usvm.UPathSelector
-import org.usvm.api.util.JcTestStateResolver
+import org.usvm.api.JcResponseSpringTest
 import org.usvm.logger
 import org.usvm.machine.state.JcState
 import org.usvm.machine.state.concreteMemory.JcConcreteMemory
-import kotlin.math.exp
-import kotlin.reflect.jvm.internal.impl.load.kotlin.JvmType
 
 class JcConcreteMemoryPathSelector(
     private val selector: UPathSelector<JcState>
@@ -50,6 +47,7 @@ class JcConcreteMemoryPathSelector(
     private fun printSpringTestSummary(state: JcState) {
         if (state.callStack.isEmpty()) return
         val userDefinedValues = state.userDefinedValues
+        JcResponseSpringTest.generateFromState(state)
         userDefinedValues.forEach {
             logger.info("END:\uD83E\uDD7A" + it.key + ": " + getConcreteValue(state, state.models[0].eval(it.value) as UConcreteHeapRef).toString())
         }

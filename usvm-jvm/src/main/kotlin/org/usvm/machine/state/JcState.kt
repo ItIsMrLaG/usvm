@@ -2,9 +2,9 @@ package org.usvm.machine.state
 
 import org.jacodb.api.jvm.JcMethod
 import org.jacodb.api.jvm.JcType
-import org.jacodb.api.jvm.cfg.JcExpr
 import org.jacodb.api.jvm.cfg.JcInst
 import org.usvm.*
+import org.usvm.api.SpringReqSettings
 import org.usvm.api.targets.JcTarget
 import org.usvm.collections.immutable.internal.MutabilityOwnership
 import org.usvm.constraints.UPathConstraints
@@ -27,7 +27,8 @@ class JcState(
     forkPoints: PathNode<PathNode<JcInst>> = PathNode.root(),
     var methodResult: JcMethodResult = JcMethodResult.NoCall,
     targets: UTargetsSet<JcTarget, JcInst> = UTargetsSet.empty(),
-    var userDefinedValues: Map<String, UExpr<out USort>> = emptyMap()
+    var userDefinedValues: Map<String, UExpr<out USort>> = emptyMap(),
+    var reqSetup: Map<SpringReqSettings, UExpr<out USort>> = emptyMap()
 ) : UState<JcType, JcMethod, JcInst, JcContext, JcTarget, JcState>(
     ctx,
     ownership,
@@ -65,7 +66,8 @@ class JcState(
             forkPoints,
             methodResult,
             targets.clone(),
-            userDefinedValues
+            userDefinedValues,
+            reqSetup
         )
     }
 

@@ -513,6 +513,28 @@ class JcMethodApproximationResolver(
             return true
         }
 
+        if (method.name.equals("_saveReqPath")) {
+            scope.doWithState {
+                reqSetup += Pair(
+                    SpringReqSettings.PATH,
+                    methodCall.arguments[0].asExpr(ctx.addressSort)
+                )
+                skipMethodInvocationWithValue(methodCall, ctx.voidValue)
+            }
+            return true
+        }
+
+        if (method.name.equals("_saveReqKind")) {
+            scope.doWithState {
+                reqSetup += Pair(
+                    SpringReqSettings.KIND,
+                    methodCall.arguments[0].asExpr(ctx.addressSort)
+                )
+                skipMethodInvocationWithValue(methodCall, ctx.voidValue)
+            }
+            return true
+        }
+
         if (method.name.equals("_classesWithFieldsValueAnnotation")) {
             scope.doWithState {
                 val types = ctx.classesOfLocations(options.projectLocations!!).filter {
