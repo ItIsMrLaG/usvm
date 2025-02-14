@@ -535,6 +535,19 @@ class JcMethodApproximationResolver(
             return true
         }
 
+        if (method.name.equals("_saveReqPathArgs")) {
+//            todo
+            return true
+        }
+
+        if (method.name.equals("_saveResSave")) {
+            scope.doWithState {
+                res = methodCall.arguments[0].asExpr(ctx.addressSort)
+                skipMethodInvocationWithValue(methodCall, ctx.voidValue)
+            }
+            return true
+        }
+
         if (method.name.equals("_classesWithFieldsValueAnnotation")) {
             scope.doWithState {
                 val types = ctx.classesOfLocations(options.projectLocations!!).filter {

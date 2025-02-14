@@ -28,7 +28,8 @@ class JcState(
     var methodResult: JcMethodResult = JcMethodResult.NoCall,
     targets: UTargetsSet<JcTarget, JcInst> = UTargetsSet.empty(),
     var userDefinedValues: Map<String, UExpr<out USort>> = emptyMap(),
-    var reqSetup: Map<SpringReqSettings, UExpr<out USort>> = emptyMap()
+    var reqSetup: Map<SpringReqSettings, UExpr<out USort>> = emptyMap(),
+    var res: UExpr<out USort>? = null,
 ) : UState<JcType, JcMethod, JcInst, JcContext, JcTarget, JcState>(
     ctx,
     ownership,
