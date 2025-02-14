@@ -6,10 +6,15 @@ import org.usvm.machine.state.JcState
 import org.jacodb.api.jvm.*
 import org.jacodb.api.jvm.ext.findClass
 import org.jacodb.api.jvm.ext.findMethodOrNull
+import org.jacodb.api.jvm.ext.int
 import org.jacodb.api.jvm.ext.toType
+import org.springframework.mock.web.MockHttpServletResponse
 import org.usvm.*
+import org.usvm.api.util.JcTestStateResolver.ResolveMode
 import org.usvm.instrumentation.testcase.UTest
 import org.usvm.instrumentation.testcase.api.*
+import org.usvm.instrumentation.util.stringType
+import org.usvm.machine.JcContext
 import org.usvm.machine.state.concreteMemory.JcConcreteMemory
 import org.usvm.util.name
 
@@ -20,16 +25,13 @@ fun JcClasspath.findJcMethod(cName: String, mName: String): JcTypedMethod {
     throw MethodNotFoundException("$mName not found")
 }
 
-fun JcClasspath.stringType(): JcType =
-    this.findClassOrNull("java.lang.String")?.toType() ?: error("No string type in classpath")
-
 fun JcClasspath.intType(): JcType =
-    this.findClassOrNull("java.lang.Integer")?.toType() ?: error("No integer type in classpath")
+    this.findClassOrNull("java.lang.Integer")?.toType() ?: error("No Integer type in classpath")
 
-fun List<String>.toStringArrayDsl(cp: JcClasspath): Pair<UTestCreateArrayExpression, MutableList<UTestInst>> {
+fun List<String>.toStringArrayDsl(ctx: JcContext): Pair<UTestCreateArrayExpression, MutableList<UTestInst>> {
     val initDSL = mutableListOf<UTestInst>()
-    val stringType = cp.stringType()
-    val intType = cp.intType()
+    val stringType = ctx.cp.stringType()
+    val intType = ctx.cp.intType()
 
     val arrayDSL = UTestCreateArrayExpression(
         elementType = stringType,
@@ -70,7 +72,30 @@ enum class SpringReqKind {
     PUT,
     POST,
     PATCH,
-    DELETE,
+    DELETE;
+
+    override fun toString(): String {
+        return when (this) {
+            GET -> "get"
+            PUT -> "put"
+            POST -> "post"
+            PATCH -> "patch"
+            DELETE -> "delete"
+        }
+    }
+
+    companion object {
+        fun fromString(str: String): SpringReqKind =
+            when (str) {
+                GET.toString() -> GET
+                PUT.toString() -> PUT
+                POST.toString() -> POST
+                PATCH.toString() -> PATCH
+                DELETE.toString() -> DELETE
+                else -> throw IllegalArgumentException("Unsupported kind: $str")
+            }
+    }
+
 }
 
 enum class SpringReqSettings {
@@ -78,84 +103,62 @@ enum class SpringReqSettings {
     KIND,
 }
 
-data class SpringResponse(val statusCode: Int) {
-//    TODO (?!?!?!?)
-}
+data class SpringResponse(
+    val statusCode: Int,
+    // TODO (add needed)
+)
+
+class SpringExn
 
 class SpringReqDSLBuilder private constructor(
     private val initStatements: MutableList<UTestInst>,
     private var reqDSL: UTestExpression,
-    private val cp: JcClasspath
+    private val ctx: JcContext
 ) {
     companion object {
 
-        fun createReq(cp: JcClasspath, kind: SpringReqKind, path: SpringReqPath): SpringReqDSLBuilder = when (kind) {
-            SpringReqKind.GET -> ::get
-            SpringReqKind.PUT -> ::put
-            SpringReqKind.POST -> ::post
-            SpringReqKind.PATCH -> ::patch
-            SpringReqKind.DELETE -> ::delete
-        }(cp, path.name, path.pathVariables)
+        fun createReq(ctx: JcContext, kind: SpringReqKind, path: SpringReqPath): SpringReqDSLBuilder =
+            commonReqDSLBuilder(kind.toString(), ctx, path.name, path.pathVariables)
 
         private const val MOCK_MVC_REQUEST_BUILDERS_CP =
             "org.springframework.test.web.servlet.request.MockMvcRequestBuilders"
 
         private fun commonReqDSLBuilder(
             type: String,
-            cp: JcClasspath,
+            ctx: JcContext,
             path: String,
             pathVariables: List<Any>
         ): SpringReqDSLBuilder {
-            val staticMethod = cp.findJcMethod(MOCK_MVC_REQUEST_BUILDERS_CP, type).method
-            val pathDSL = UTestStringExpression(path, cp.stringType())
-            val (arrayDSL, initDSL) = pathVariables.map { it.toString() }.toStringArrayDsl(cp)
+            val staticMethod = ctx.cp.findJcMethod(MOCK_MVC_REQUEST_BUILDERS_CP, type).method
+            val pathDSL = UTestStringExpression(path, ctx.cp.stringType())
+            val (arrayDSL, initDSL) = pathVariables.map { it.toString() }.toStringArrayDsl(ctx)
 
             return SpringReqDSLBuilder(
                 initStatements = initDSL,
                 reqDSL = UTestStaticMethodCall(staticMethod, listOf(pathDSL, arrayDSL)),
-                cp = cp
+                ctx = ctx
             )
         }
-
-        // static org.springframework.test.web.servlet.request.MockMvcRequestBuilders#get
-        fun get(cp: JcClasspath, path: String, pathVariables: List<Any>): SpringReqDSLBuilder =
-            commonReqDSLBuilder("get", cp, path, pathVariables)
-
-        // static org.springframework.test.web.servlet.request.MockMvcRequestBuilders#put
-        fun put(cp: JcClasspath, path: String, pathVariables: List<Any>): SpringReqDSLBuilder =
-            commonReqDSLBuilder("put", cp, path, pathVariables)
-
-        // static org.springframework.test.web.servlet.request.MockMvcRequestBuilders#post
-        fun post(cp: JcClasspath, path: String, pathVariables: List<Any>): SpringReqDSLBuilder =
-            commonReqDSLBuilder("post", cp, path, pathVariables)
-
-        // static org.springframework.test.web.servlet.request.MockMvcRequestBuilders#patch
-        fun patch(cp: JcClasspath, path: String, pathVariables: List<Any>): SpringReqDSLBuilder =
-            commonReqDSLBuilder("patch", cp, path, pathVariables)
-
-        // static org.springframework.test.web.servlet.request.MockMvcRequestBuilders#delete
-        fun delete(cp: JcClasspath, path: String, pathVariables: List<Any>): SpringReqDSLBuilder =
-            commonReqDSLBuilder("delete", cp, path, pathVariables)
     }
 
     fun getInitDSL(): List<UTestInst> = initStatements
     fun getDSL() = reqDSL
 
     fun addParam(attr: ParamAttr): SpringReqDSLBuilder {
-        val method = cp.findJcMethod(MOCK_MVC_REQUEST_BUILDERS_CP, "param").method
+        val method = ctx.cp.findJcMethod(MOCK_MVC_REQUEST_BUILDERS_CP, "param").method
         addStrArrOfStrCallDSL(method, attr.name, attr.values)
         return this
     }
 
     fun addHeader(attr: HeaderAttr): SpringReqDSLBuilder {
-        val method = cp.findJcMethod(MOCK_MVC_REQUEST_BUILDERS_CP, "header").method
+        val method = ctx.cp.findJcMethod(MOCK_MVC_REQUEST_BUILDERS_CP, "header").method
         addStrArrOfStrCallDSL(method, attr.name, attr.values)
         return this
     }
 
     private fun addStrArrOfStrCallDSL(mName: JcMethod, str: String, arrOfStr: List<Any>) {
-        val strArgDSL = UTestStringExpression(str, cp.stringType())
-        val arrArgsDSL = arrOfStr.map { it.toString() }.toStringArrayDsl(cp).let { (argsDSL, initDSL) ->
+        val strArgDSL = UTestStringExpression(str, ctx.cp.stringType())
+        val arrArgsDSL = arrOfStr.map { it.toString() }.toStringArrayDsl(ctx).let { (argsDSL, initDSL) ->
             initStatements.addAll(initDSL)
             argsDSL
         }
@@ -217,7 +220,7 @@ class SpringReqDSLBuilder private constructor(
 }
 
 class SpringTestExecDSLBuilder private constructor(
-    private val cp: JcClasspath,
+    private val ctx: JcContext,
     private val initStatements: MutableList<UTestInst>,
     private var mockMvcDSL: UTestExpression,
     private var isPerformed: Boolean = false,
@@ -231,7 +234,7 @@ class SpringTestExecDSLBuilder private constructor(
         *   mockMvc: MockMvc = generatedClass.<FIELD-WITH-MOCKMVC>
         * */
         fun intiTestCtx(
-            cp: JcClasspath,
+            ctx: JcContext,
             generatedTestClass: JcClassType,
             fromField: JcField
         ): SpringTestExecDSLBuilder {
@@ -239,18 +242,18 @@ class SpringTestExecDSLBuilder private constructor(
 
             val testCtxManagerName = "org.springframework.test.context.TestContextManager"
             val testCtxManagerDSL = UTestConstructorCall(
-                method = cp.findJcMethod(testCtxManagerName, "<init>").method,
+                method = ctx.cp.findJcMethod(testCtxManagerName, "<init>").method,
                 args = listOf(UTestClassExpression(generatedTestClass))
             ).also { initStatements.add(it) }
 
             val generatedClassInstDSL = UTestConstructorCall(
-                method = cp.findJcMethod(generatedTestClass.name, "<init>").method,
+                method = ctx.cp.findJcMethod(generatedTestClass.name, "<init>").method,
                 args = listOf()
             ).also { initStatements.add(it) }
 
             UTestMethodCall(
                 instance = testCtxManagerDSL,
-                method = cp.findJcMethod(testCtxManagerName, "prepareTestInstance").method,
+                method = ctx.cp.findJcMethod(testCtxManagerName, "prepareTestInstance").method,
                 args = listOf(generatedClassInstDSL)
             ).also { initStatements.add(it) }
 
@@ -260,7 +263,7 @@ class SpringTestExecDSLBuilder private constructor(
             ).also { initStatements.add(it) }
 
             return SpringTestExecDSLBuilder(
-                cp = cp,
+                ctx = ctx,
                 initStatements = initStatements,
                 mockMvcDSL = mockMvcDSL,
             )
@@ -270,7 +273,7 @@ class SpringTestExecDSLBuilder private constructor(
     fun addPerformCall(reqDSL: UTestExpression): SpringTestExecDSLBuilder {
         UTestMethodCall(
             instance = mockMvcDSL,
-            method = cp.findJcMethod("org.springframework.test.web.servlet.MockMvc", "perform").method,
+            method = ctx.cp.findJcMethod("org.springframework.test.web.servlet.MockMvc", "perform").method,
             args = listOf(reqDSL)
         ).also {
             mockMvcDSL = it
@@ -284,7 +287,7 @@ class SpringTestExecDSLBuilder private constructor(
 
         UTestMethodCall(
             instance = mockMvcDSL,
-            method = cp.findJcMethod("org.springframework.test.web.servlet", "andExpect").method,
+            method = ctx.cp.findJcMethod("org.springframework.test.web.servlet", "andExpect").method,
             args = args
         ).also {
             mockMvcDSL = it
@@ -300,7 +303,7 @@ class SpringTestExecDSLBuilder private constructor(
 }
 
 class SpringMatchersDSLBuilder(
-    val cp: JcClasspath
+    val ctx: JcContext
 ) {
     private val SPRING_RESULT_PACK = "org.springframework.test.web.servlet.result"
 
@@ -309,7 +312,7 @@ class SpringMatchersDSLBuilder(
 
     fun addStatusCheck(int: Int): SpringMatchersDSLBuilder {
         val statusMatcherDSL = UTestStaticMethodCall(
-            method = cp.findJcMethod(
+            method = ctx.cp.findJcMethod(
                 "$SPRING_RESULT_PACK.MockMvcResultMatchers",
                 "status"
             ).method,
@@ -318,13 +321,12 @@ class SpringMatchersDSLBuilder(
 
         val intDSL = UTestIntExpression(
             value = int,
-            //TODO: original method StatusResultMatchers.is() takes a primitive type int, so this may be incorrect
-            type = cp.intType()
+            type = ctx.cp.int
         ).also { initStatements.add(it) }
 
         UTestMethodCall(
             instance = statusMatcherDSL,
-            method = cp.findJcMethod("$SPRING_RESULT_PACK.StatusResultMatchers", "is").method,
+            method = ctx.cp.findJcMethod("$SPRING_RESULT_PACK.StatusResultMatchers", "is").method,
             args = listOf(intDSL)
         ).also { matchers.add(it) }
 
@@ -335,40 +337,49 @@ class SpringMatchersDSLBuilder(
     fun getMatchersDSL(): List<UTestExpression> = matchers
 }
 
-interface JcSpringTestDslGenerator {
-    fun generateTestDSL(cp: JcClasspath): UTest
-}
 
-class JcExnSpringTest private constructor(
-    /*TODO*/
-) : JcSpringTestDslGenerator {
-
-    companion object {
-        fun generateFromState(state: JcState): JcExnSpringTest = JcExnSpringTest(/* TODO */)
-    }
-
-    override fun generateTestDSL(cp: JcClasspath): UTest {
-        TODO("Not yet implemented")
-    }
-}
-
-class JcResponseSpringTest private constructor(
+class JcSpringTest private constructor(
+    val ctx: JcContext,
     val generatedTestClass: JcClassType,
     /* Request information */
     val reqAttrs: List<SpringReqAttr>,
     val reqKind: SpringReqKind,
     val reqPath: SpringReqPath,
     /* Response information */
-    val res: SpringResponse, // TODO!!!
-) : JcSpringTestDslGenerator {
+    private val _res: SpringResponse?,
+    private val _exn: SpringExn?,
+//    todo: exn
+) {
     companion object {
-        fun generateFromState(state: JcState): JcResponseSpringTest = JcResponseSpringTest(
+        fun generateFromState(state: JcState): JcSpringTest =
+            if (state.res == null)
+                generateResponseTest(state)
+            else
+                generateExnTest(state)
+
+        private fun generateResponseTest(state: JcState): JcSpringTest = JcSpringTest(
+            state.ctx,
             getGeneratedClassName(state.ctx.cp),
             getReqAttrs(state),
             getReqKind(state),
             getReqPath(state),
-            getSpringResponse(/*TODO: should it be state or something like UReadOnlyMemory<JcType>?*/)
+            _res = getSpringResponse(state.ctx.cp, state),
+            _exn = null
         )
+
+        private fun generateExnTest(state: JcState): JcSpringTest = JcSpringTest(
+            state.ctx,
+            getGeneratedClassName(state.ctx.cp),
+            getReqAttrs(state),
+            getReqKind(state),
+            getReqPath(state),
+            _res = null,
+            _exn = getSpringExn(),
+        )
+
+        private fun getSpringExn(): SpringExn {
+            TODO()
+        }
 
         private fun getGeneratedClassName(cp: JcClasspath): JcClassType {
             val cl = cp.findClassOrNull("StartSpringTestClass") //TODO: get it from state? (it is generated in runtime)
@@ -377,32 +388,23 @@ class JcResponseSpringTest private constructor(
         }
 
         private fun getReqKind(state: JcState): SpringReqKind {
-            val kindValue = state.reqSetup[SpringReqSettings.KIND]?.let { it as UConcreteHeapRef }
-            assert(kindValue != null)
-            assert(kindValue?.address != null)
+
+            val expr = state.reqSetup[SpringReqSettings.KIND] ?: throw IllegalArgumentException("No path found")
+            val valueExpr = state.models[0].eval(expr)
 
             val type = state.ctx.stringType as JcClassType
-            // TODO: should I rewrite it with model usage?
-            val kind = (state.memory as JcConcreteMemory).concretize(state, kindValue!!, kindValue, type) as String
+            val kind =
+                (state.memory as JcConcreteMemory).concretize(state, valueExpr, type, ResolveMode.MODEL) as String
 
-            return when (kind) {
-                "get" -> SpringReqKind.GET
-                "put" -> SpringReqKind.PUT
-                "post" -> SpringReqKind.POST
-                "patch" -> SpringReqKind.PATCH
-                "delete" -> SpringReqKind.DELETE
-                else -> throw IllegalArgumentException("Unsupported kind: $kind")
-            }
+            return SpringReqKind.fromString(kind)
         }
 
         private fun getReqPath(state: JcState): SpringReqPath {
-            val pathValue = state.reqSetup[SpringReqSettings.PATH]?.let { it as UConcreteHeapRef }
-            assert(pathValue != null)
-            assert(pathValue?.address != null)
-
+            val expr = state.reqSetup[SpringReqSettings.PATH] ?: throw IllegalArgumentException("No path found")
+            val valueExpr = state.models[0].eval(expr)
             val type = state.ctx.stringType as JcClassType
-            //TODO: should I rewrite it with model usage?
-            val path = (state.memory as JcConcreteMemory).concretize(state, pathValue!!, pathValue, type) as String
+            val path =
+                (state.memory as JcConcreteMemory).concretize(state, valueExpr, type, ResolveMode.MODEL) as String
 
             return SpringReqPath(
                 name = path,
@@ -410,20 +412,17 @@ class JcResponseSpringTest private constructor(
             )
         }
 
+// todo:(path for test pipeline) /owners/find
+
         private fun getReqAttrs(state: JcState): MutableList<SpringReqAttr> {
             fun getHeaderAttr(name: String, expr: UExpr<out USort>): HeaderAttr {
-                val valueExpr = state.models[0].eval(expr) as UConcreteHeapRef
-
-                if (valueExpr.address == NULL_ADDRESS) return HeaderAttr(
-                    name = name,
-                    values = listOf() // TODO: Is it true??? (don't understand how interpret NULL_ADDRESS)
-                )
+                val valueExpr = state.models[0].eval(expr)
 
                 // TODO: Is it really always a String??? (From where I can get JcType?) By my mind it should be an Array of objects?
                 val type = state.ctx.stringType as JcClassType
 
                 val concreteValue: List<Any>? =
-                    (state.memory as JcConcreteMemory).concretize(state, valueExpr, valueExpr as UHeapRef, type)
+                    (state.memory as JcConcreteMemory).concretize(state, valueExpr, type, ResolveMode.MODEL)
                         ?.let { value ->
                             if (value is Iterable<*>) value.map { it!! }.toList()
                             else listOf(value)
@@ -437,18 +436,12 @@ class JcResponseSpringTest private constructor(
             }
 
             fun getParamAttr(name: String, expr: UExpr<out USort>): ParamAttr {
-                val valueExpr = state.models[0].eval(expr) as UConcreteHeapRef
-
-                if (valueExpr.address == NULL_ADDRESS) return ParamAttr(
-                    name = name,
-                    values = listOf() // TODO: Is it true??? (don't understand how interpret NULL_ADDRESS)
-                )
-
+                val valueExpr = state.models[0].eval(expr)
                 // TODO: Is it really always a String??? (From where I can get JcType?) By my mind it should be an Array of objects?
-                val type = state.ctx.stringType as JcClassType
+                val type = state.ctx.stringType as JcType
 
                 val concreteValue: List<Any>? =
-                    (state.memory as JcConcreteMemory).concretize(state, valueExpr, valueExpr as UHeapRef, type)
+                    (state.memory as JcConcreteMemory).concretize(state, valueExpr, type, ResolveMode.MODEL)
                         ?.let { value ->
                             if (value is Iterable<*>) value.map { it!! }.toList()
                             else listOf(value)
@@ -475,26 +468,45 @@ class JcResponseSpringTest private constructor(
             }.toMutableList()
         }
 
-        private fun getSpringResponse(): SpringResponse {
-            return SpringResponse(200)// TODO("Oh....")
+        private fun getSpringResponse(cp: JcClasspath, state: JcState): SpringResponse {
+            assert(state.res != null)
+            val expr = state.res ?: throw IllegalArgumentException("No Response")
+            val valueExpr = state.models[0].eval(expr)
+
+            val type = cp.findClassOrNull("org.springframework.mock.web.MockHttpServletResponse")?.toType()
+                ?: throw IllegalStateException("No MockHttpServletResponse class")
+
+            // TODO: is it correct?
+            val response = (state.memory as JcConcreteMemory).concretize(
+                state,
+                valueExpr,
+                type,
+                ResolveMode.CURRENT
+            ) as MockHttpServletResponse
+            return SpringResponse(response.status)
         }
     }
 
-    override fun generateTestDSL(cp: JcClasspath): UTest {
+    val isSuccess = _res != null
+    val isFail = _exn != null
+    val res = assert(isSuccess).let { _res!! }
+    val exn = assert(isFail).let { _exn!! }
+
+    fun generateTestDSL(): UTest {
         val initStatements: MutableList<UTestInst> = mutableListOf()
         val testExecBuilder = SpringTestExecDSLBuilder.intiTestCtx(
-            cp = cp,
+            ctx = ctx,
             generatedTestClass = generatedTestClass,
             fromField = generatedTestClass.fields.first { it.name.contains("mockMvc") }.field //TODO: mb error here
         ).also { initStatements.addAll(it.getInitDSL()) }
 
-        val reqDSL = generateReqDSL(cp, reqKind, reqPath, reqAttrs).let { (reqDSL, reqInitDSL) ->
+        val reqDSL = generateReqDSL(reqKind, reqPath, reqAttrs).let { (reqDSL, reqInitDSL) ->
             initStatements.addAll(reqInitDSL)
             reqDSL
         }
         testExecBuilder.addPerformCall(reqDSL)
 
-        val matchersDSL = generateMatchersDSL(cp).let { (matchersDSL, matchersInitDSL) ->
+        val matchersDSL = generateMatchersDSL().let { (matchersDSL, matchersInitDSL) ->
             initStatements.addAll(matchersInitDSL)
             matchersDSL
         }
@@ -506,8 +518,8 @@ class JcResponseSpringTest private constructor(
         )
     }
 
-    private fun generateMatchersDSL(cp: JcClasspath): Pair<List<UTestExpression>, List<UTestInst>> {
-        val matchersBuilder = SpringMatchersDSLBuilder(cp)
+    private fun generateMatchersDSL(): Pair<List<UTestExpression>, List<UTestInst>> {
+        val matchersBuilder = SpringMatchersDSLBuilder(ctx)
 
         matchersBuilder.addStatusCheck(res.statusCode)
 //      TODO("add more matchers")
@@ -516,16 +528,11 @@ class JcResponseSpringTest private constructor(
     }
 
     private fun generateReqDSL(
-        cp: JcClasspath,
         reqKind: SpringReqKind,
         reqPath: SpringReqPath,
         reqAttrs: List<SpringReqAttr>
     ): Pair<UTestExpression, List<UTestInst>> {
-        val builder = SpringReqDSLBuilder.createReq(cp, reqKind, reqPath).addAttrs(reqAttrs)
+        val builder = SpringReqDSLBuilder.createReq(ctx, reqKind, reqPath).addAttrs(reqAttrs)
         return Pair(builder.getDSL(), builder.getInitDSL())
     }
-}
-
-fun createJcSpringTest(state: JcState): JcSpringTestDslGenerator {
-    TODO("JcResponseSpringTest(...) or JcExnSpringTest(...)")
 }
