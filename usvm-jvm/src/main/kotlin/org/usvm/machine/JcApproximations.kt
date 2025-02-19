@@ -664,7 +664,7 @@ class JcMethodApproximationResolver(
 
     @Suppress("UNUSED_PARAMETER")
     private fun shouldSkipPath(path: String, kind: String, controllerTypeName: String): Boolean {
-        return path != "/body/graph"
+        return path != "/simple/increment_from_header"
     }
 
     private fun shouldSkipController(controllerType: JcClassOrInterface): Boolean {
@@ -765,6 +765,8 @@ class JcMethodApproximationResolver(
         return scope.calcOnState {
             val userValueKeyUpper = userValueKey.uppercase()
             var storedValue = getUserDefinedValue(userValueKeyUpper)
+
+            println("I am here")
 
             if (storedValue == null) {
                 if (newValue == null) {

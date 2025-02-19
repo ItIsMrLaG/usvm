@@ -75,6 +75,13 @@ private fun loadWebPetClinicBench(): BenchCp {
     }
 }
 
+private fun loadArthBench(): BenchCp {
+    val petClinicDir = Path(System.getenv("USVM_ARTH_BOOT_INF"))
+    return loadWebAppBenchCp(petClinicDir / "classes", petClinicDir / "lib").apply {
+        entrypointFilter = { it.enclosingClass.simpleName.startsWith("PetClinicApplication") }
+    }
+}
+
 private fun loadWebGoatBench(): BenchCp {
     val webGoatDir = Path("/Users/michael/Documents/Work/WebGoat/target/build/BOOT-INF")
     return loadWebAppBenchCp(webGoatDir / "classes", webGoatDir / "lib").apply {
@@ -98,7 +105,7 @@ private fun loadKlawBench(): BenchCp {
 
 fun main() {
     val benchCp = logTime("Init jacodb") {
-        loadWebPetClinicBench()
+        loadArthBench()
     }
 
     logTime("Analysis ALL") {
